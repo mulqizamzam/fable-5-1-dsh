@@ -1,0 +1,77 @@
+{
+  "name": "fable-5-1-dsh",
+  "version": "0.1.1",
+  "description": "Fable-5.1 reasoning-orchestration bundle for DeepSeek Harness: 100 specs enforced by one policy service, four event hooks, and namespaced tools.",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "fable-5-1",
+    "reasoning",
+    "orchestration"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "node --import tsx/esm --test test/unit/*.spec.ts test/integration/*.spec.ts test/e2e/*.spec.ts",
+    "test:unit": "node --import tsx/esm --test test/unit/*.spec.ts",
+    "test:integration": "node --import tsx/esm --test test/integration/*.spec.ts",
+    "test:e2e": "node --import tsx/esm --test test/e2e/*.spec.ts"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.4",
+    "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-llm": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-agent": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-session": ">=0.2.0-rc.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-session": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "link:/home/administrator/deepseek-harness/vendor/cordis",
+    "@deepseek-ai/dsh-tools": "link:/home/administrator/deepseek-harness/packages/core/tools",
+    "@deepseek-ai/dsh-llm": "link:/home/administrator/deepseek-harness/packages/llm/llm",
+    "@deepseek-ai/dsh-agent": "link:/home/administrator/deepseek-harness/packages/core/agent",
+    "@deepseek-ai/dsh-session": "link:/home/administrator/deepseek-harness/packages/core/session",
+    "tsx": "link:/home/administrator/deepseek-harness/node_modules/tsx",
+    "typescript": "link:/home/administrator/deepseek-harness/node_modules/typescript"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "engines": {
+      "dsh": ">=0.2.0-rc.2"
+    }
+  }
+}

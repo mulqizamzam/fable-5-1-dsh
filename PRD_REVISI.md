@@ -53,7 +53,9 @@ fable-5-1-dsh/
 │   ├── tools/
 │   │   ├── context.ts
 │   │   ├── verification.ts
-│   │   ├── reasoning.ts
+│   │   ├── reasoning-core.ts      # specs 31, 32, 35, 37–42, 44–46, 49
+│   │   ├── reasoning-flow.ts      # specs 51, 53–54, 56–57, 59, 61–69, 71
+│   │   ├── reasoning-ops.ts       # specs 73–80, 82–90
 │   │   ├── dag.ts
 │   │   ├── cost.ts
 │   │   ├── escalation.ts

@@ -1,0 +1,13 @@
+# fable-5-1 bundle patch: inserts the policy service, the four event hooks,
+# and the namespaced tool groups. Shape follows the verified entry-list schema
+# (dsh --dump-config-schema; cf. @deepseek-ai/dsh-experimental-inspector).
+
+- insert:
+    - id: fable-5-1
+      name: fable-5-1-dsh
+      config:
+        context:
+          compactAt: 0.70
+          dropAt: 0.85
+          spillAt: 0.90
+          spillPath: .dsh/fable-spill
