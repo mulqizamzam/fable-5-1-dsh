@@ -16,7 +16,7 @@ Confirm the dsh surfaces the port depends on exist at the pinned commit: (1) Ser
 Failure at §0 = halt. No speculative porting.
 
 §1. Objective
-Produce one dsh bundle from the 100 fable-5-1 specs.
+Produce one dsh bundle from the 100 fable-5-1 specs (source inventory: sumber100specs.md — id, core rule, trigger per spec).
 
 Package: fable-5-1-dsh
 
@@ -481,5 +481,5 @@ One bundle. Three primitives: service, hooks, tools. 100 specs, mapped once each
 10. Encoding: file normalized to LF with a final newline (v0.1.0 was CRLF), per §3.6, the encoding bullet in §7, and §8's encoding requirement.
 11. Post-edit audit: an independent review of this v0.1.1 draft caught five residual defects, all fixed in place — the stale read list in §6 Phase 0 (line 311), the "four surfaces" count phrasing in §0 (it enumerates three items), the dual-listed set in the coverage rule (all eight state specs, not three), item 7's own arithmetic above (13, not 15), and two §5 block comments citing specs with no field in that block (52, 43, 96 — annotations only, no schema change).
 
-Known limitation, deliberately not "fixed": the definitions of specs 21, 23, 24, 25, 26 (added by the operator in v0.1.0) could not be checked against the original 100-spec source inventory — that inventory is not present in this workspace. They are carried as operator-authored content and must be source-checked before §8's definition of done is claimed.
+Source verification (closed): the 100-spec source inventory is in the workspace as sumber100specs.md. Cross-checked against the §4 matrix: all 100 ids and names match exactly, including the five specs added by the operator in v0.1.0 (21 timeboxing, 23 conflict-resolution, 24 observability, 25 determinism, 26 sandbox-boundaries). Provenance of every spec definition is confirmed; no spec definition remains unsourced. The one check that could not be automated: the PRD's "Kills" mechanism column is an operator-layer addition on top of the source's core rule + trigger — consistent on the five checked specs, not line-by-line diffed for all 100.
 
