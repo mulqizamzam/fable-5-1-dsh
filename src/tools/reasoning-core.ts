@@ -164,12 +164,6 @@ function requireVerdict(args: Record<string, unknown>): PassVerdict {
   return verdict
 }
 
-function forkDecision(candidateCount: number, budgetLeft: number): ForkDecision {
-  if (candidateCount > 1) return budgetLeft > 0 ? 'fork' : 'merge'
-  if (candidateCount === 1) return 'keep'
-  return 'discard'
-}
-
 export function reasoningCoreTools(): ToolSpec[] {
   return [
     {
@@ -191,11 +185,16 @@ export function reasoningCoreTools(): ToolSpec[] {
           decision: { type: 'string', enum: ['fork', 'merge', 'keep', 'discard'] },
         },
       },
-      execute(args) {
+      execute(args, { service }) {
         const record = asRecord(args)
         const candidateCount = requireCount(record, 'candidateCount')
         const budgetLeft = requireCount(record, 'budgetLeft')
-        return { decision: forkDecision(candidateCount, budgetLeft) }
+        // The stage fork budget is consumed here (spec 96): the caller's
+        // budgetLeft is advisory; the service counter is the hard cap.
+        const decision: ForkDecision = candidateCount > 1
+          ? budgetLeft > 0 && service.recordFork() ? 'fork' : 'merge'
+          : candidateCount === 1 ? 'keep' : 'discard'
+        return { decision }
       },
     },
     {
@@ -351,7 +350,9 @@ export function reasoningCoreTools(): ToolSpec[] {
         const contradictions: string[][] = []
         for (const [index, claim] of claims.entries()) {
           for (const other of claims.slice(index + 1)) {
-            if (JSON.stringify(claim.value) !== JSON.stringify(other.value)) contradictions.push([claim.id, other.id])
+            // Canonical comparison: equal content with different key order is
+            // the same claim, not a contradiction (spec 39 + canonicality 65).
+            if (fingerprint(claim.value) !== fingerprint(other.value)) contradictions.push([claim.id, other.id])
           }
         }
         return { contradictions }
@@ -531,7 +532,7 @@ export function reasoningCoreTools(): ToolSpec[] {
           strategy: { type: 'string', enum: ['union', 'intersection', 'weighted'] },
         },
       },
-      execute(args) {
+      execute(args, { service }) {
         const record = asRecord(args)
         const strategy = requireMergeStrategy(record)
         const sets = requireStringSets(record.sets, 'sets')
@@ -539,6 +540,8 @@ export function reasoningCoreTools(): ToolSpec[] {
         const merged = strategy === 'intersection'
           ? ordered.filter((value) => sets.every((set) => set.includes(value)))
           : ordered
+        // spec 96: every merge consumes one slot of the per-stage merge budget.
+        service.recordMerge()
         return { merged, strategy }
       },
     },
@@ -566,7 +569,10 @@ export function reasoningCoreTools(): ToolSpec[] {
       execute(args, { service }) {
         const record = asRecord(args)
         requireString(record, 'passId')
-        return { revertedTo: service.snapshots.latest()?.id ?? null }
+        // Rollback targets the most recent CONSISTENT checkpoint: a snapshot
+        // marked unverified (timeout/timebox) is not a state to revert to
+        // (specs 18/46).
+        return { revertedTo: service.lastVerifiedSnapshot()?.id ?? null }
       },
     },
     {

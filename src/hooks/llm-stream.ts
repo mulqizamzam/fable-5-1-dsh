@@ -1,10 +1,12 @@
 /**
- * llm/stream hook — specs 22, 33, 42, 53, 92.
+ * llm/stream hook — specs 15, 22, 33, 42, 53, 58, 92.
  *
  * Verified contract: `llm/stream` is a WATERFALL over the token stream; a
  * listener MUST call next() and pass chunks through. This wrapper counts
  * tokens (stage budget + interleaved budget), fingerprints chunks for dedup,
- * and tracks convergence for early exit — without altering the stream.
+ * labels the reasoning between tool calls as interleaved (spec 15 — not
+ * parallel), feeds the per-turn convergence tracker (spec 58), and tracks
+ * convergence for early exit — without altering the stream.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
@@ -47,6 +49,14 @@ export function wireLlmStream(ctx: Context): void {
       }
       yield raw
     }
+    // spec 15: reasoning between tool calls is interleaved, never parallel.
+    svc.labelPass(stage, 'interleaved')
+    // spec 58: this turn's distance from the previous turn — a stable stream
+    // is one convergence signal. New evidence (tools/result) is the other.
+    const previous = svc.previousTurnTokens.get(stage) ?? 0
+    const distance = previous === 0 ? 0 : Math.abs(tokens - previous) / previous
+    svc.previousTurnTokens.set(stage, tokens)
+    svc.recordTurnDistance(distance)
     // spec 22: per-stage token accounting with 80% alert / 100% hard stop signal.
     const budget = svc.addStageTokens(stage, tokens)
     if (budget.alert) {
@@ -56,6 +66,16 @@ export function wireLlmStream(ctx: Context): void {
         check: 'token budget per stage',
         verdict: budget.stop ? 'discarded' : 'neutral',
         unverified: budget.stop ? ['stage exceeded token budget'] : [],
+        at: Date.now(),
+      })
+    }
+    if (svc.converged().converged) {
+      svc.recordWorklog({
+        stage,
+        output: `converged: ${svc.config.reasoning.convergenceTurns} stable turns below delta ${svc.config.reasoning.convergenceDelta}, no new evidence`,
+        check: 'convergence criteria',
+        verdict: 'neutral',
+        unverified: [],
         at: Date.now(),
       })
     }

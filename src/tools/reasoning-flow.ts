@@ -396,6 +396,9 @@ export function reasoningFlowTools(): ToolSpec[] {
           latencyMs: 0,
           unverified: [],
         })
+        // Spec 15: a lineage pass is a chain link (sequential); parallel
+        // structure is labeled where branches join (dag tool, spec 34).
+        service.labelPass(passId, 'sequential')
         return { recorded: true, ancestors: service.lineage.ancestors(passId) }
       },
     },

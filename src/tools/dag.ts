@@ -222,6 +222,9 @@ export function dagTools(): ToolSpec[] {
           unverified: [],
         }
         service.recordPass(pass)
+        // Spec 15: label the pass's reasoning mode by its dependency shape —
+        // a join of several branches is parallel, a single link is sequential.
+        service.labelPass(passId, unique.length > 1 ? 'parallel' : 'sequential')
         return { recorded: true, ancestors: service.lineage.ancestors(passId) }
       },
     },

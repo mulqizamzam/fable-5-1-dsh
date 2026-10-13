@@ -1,5 +1,5 @@
 /**
- * Context & session tools — specs 1, 2, 9, 22, 33 (Gate 4a).
+ * Context & session tools — specs 1, 2, 3, 9, 22, 33 (Gate 4a).
  *
  * Reference implementation for all tool groups: typed envelope via
  * defineTool, idempotent by construction, no silent side effects. Arguments
@@ -9,6 +9,11 @@
 import type { ToolSpec } from './shared.ts'
 import { createHash } from 'node:crypto'
 import type { ArtifactContract } from '../types/gate.ts'
+
+interface ToolCall {
+  readonly name: string
+  readonly deps: readonly string[]
+}
 
 function checksum(data: unknown): string {
   return `sha256:${createHash('sha256').update(JSON.stringify(data)).digest('hex')}`
@@ -98,6 +103,74 @@ export function contextTools(): ToolSpec[] {
         if (Object.keys(outputSchema).length === 0) violations.push('outputSchema missing')
         if (depth > 1) violations.push(`spawn depth ${depth} > 1 — recursive fanout blocked`)
         return { valid: violations.length === 0, violations }
+      },
+    },
+    {
+      spec: '3',
+      name: 'tool-call-batching',
+      description: 'Partition tool calls into dependency layers: calls whose dependencies are satisfied batch into one turn, a call waiting on another is serialized (spec 3).',
+      parameters: {
+        type: 'object',
+        required: ['calls'],
+        properties: {
+          calls: {
+            type: 'array',
+            description: 'Independent or dependent tool calls to partition.',
+            items: {
+              type: 'object',
+              required: ['name'],
+              properties: {
+                name: { type: 'string', description: 'Call identity.' },
+                deps: { type: 'array', items: { type: 'string' }, description: 'Call names this call depends on.' },
+              },
+            },
+          },
+        },
+      },
+      outputSchema: {
+        type: 'object',
+        required: ['batches', 'serialized'],
+        properties: {
+          batches: {
+            type: 'array',
+            items: { type: 'array', items: { type: 'string' } },
+            description: 'Dependency layers; each layer batches into one turn.',
+          },
+          serialized: { type: 'array', items: { type: 'string' }, description: 'Calls that ran alone because they waited on a dependency.' },
+        },
+      },
+      execute(args) {
+        const record = asRecord(args)
+        const raw = record.calls
+        if (!Array.isArray(raw)) throw new Error('calls must be an array of {name, deps}')
+        const calls: ToolCall[] = raw.map((entry: unknown, index: number) => {
+          if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+            throw new Error(`calls[${index}] must be an object`)
+          }
+          const call = entry as { name?: unknown; deps?: unknown }
+          if (typeof call.name !== 'string' || call.name.length === 0) throw new Error(`calls[${index}].name must be a non-empty string`)
+          const deps = call.deps ?? []
+          if (!Array.isArray(deps) || deps.some((dep: unknown) => typeof dep !== 'string')) {
+            throw new Error(`calls[${index}].deps must be an array of strings`)
+          }
+          return { name: call.name, deps: deps as string[] }
+        })
+        const names = new Set(calls.map((call) => call.name))
+        const batches: string[][] = []
+        const done = new Set<string>()
+        let remaining = [...calls]
+        while (remaining.length > 0) {
+          const layer = remaining.filter((call) => call.deps.every((dep) => done.has(dep)))
+          if (layer.length === 0) {
+            const unknownDeps = remaining.flatMap((call) => call.deps.filter((dep) => !names.has(dep)))
+            throw new Error(`calls cannot batch: dependency cycle${unknownDeps.length > 0 ? ` or unknown dependency ${unknownDeps.join(', ')}` : ''} among ${remaining.map((c) => c.name).join(', ')}`)
+          }
+          batches.push(layer.map((call) => call.name))
+          for (const call of layer) done.add(call.name)
+          remaining = remaining.filter((call) => !layer.includes(call))
+        }
+        const serialized = batches.filter((batch) => batch.length === 1).flat()
+        return { batches, serialized }
       },
     },
     {

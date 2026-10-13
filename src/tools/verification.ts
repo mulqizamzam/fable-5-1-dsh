@@ -16,6 +16,18 @@ function nonEmpty(value: unknown): boolean {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+function asRecord(args: unknown): Record<string, unknown> {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+    throw new Error('arguments must be an object')
+  }
+  return args as Record<string, unknown>
+}
+
+function requireNonEmptyString(value: unknown, key: string): string {
+  if (!nonEmpty(value)) throw new Error(`${key} must be a non-empty string`)
+  return value as string
+}
+
 export function verificationTools(): ToolSpec[] {
   return [
     {
@@ -45,7 +57,13 @@ export function verificationTools(): ToolSpec[] {
         },
       },
       execute(args, { service }): GateResult {
-        const { check, cmd, expected, actual } = args as { check: string; cmd: string; expected: string; actual: string }
+        const record = asRecord(args)
+        // Fail-loud: a gate that can fail cannot be recorded from missing
+        // fields — undefined === undefined must never read as a pass (spec 5).
+        const check = requireNonEmptyString(record.check, 'check')
+        const cmd = requireNonEmptyString(record.cmd, 'cmd')
+        const expected = requireNonEmptyString(record.expected, 'expected')
+        const actual = requireNonEmptyString(record.actual, 'actual')
         return service.recordGate({ gate: check, cmd, expected, actual, pass: actual === expected, at: Date.now() })
       },
     },
@@ -299,7 +317,8 @@ export function verificationTools(): ToolSpec[] {
       },
       execute(args): { verdict: string; diverged: boolean } {
         const { partial, expectation } = args as { partial: unknown; expectation: unknown }
-        const diverged = JSON.stringify(partial) !== JSON.stringify(expectation)
+        // Canonical comparison: key order is not divergence (spec 70 + canonicality 65).
+        const diverged = fingerprint(partial) !== fingerprint(expectation)
         return { verdict: diverged ? UNVERIFIED : VERIFIED, diverged }
       },
     },

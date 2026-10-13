@@ -50,6 +50,23 @@ export class PolicyRegistry {
   }
 }
 
+/**
+ * Version ordering: numeric-aware segment comparison so 1.10.0 sorts after
+ * 1.9.0 (plain string compare puts 1.10.0 first). Non-numeric segments fall
+ * back to string order, which keeps date-style versions deterministic.
+ */
 function compareVersion(a: PolicyRecord, b: PolicyRecord): number {
-  return a.version === b.version ? 0 : a.version < b.version ? -1 : 1
+  if (a.version === b.version) return 0
+  const left = a.version.split('.')
+  const right = b.version.split('.')
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const x = left[i] ?? ''
+    const y = right[i] ?? ''
+    if (x === y) continue
+    const nx = Number(x)
+    const ny = Number(y)
+    if (Number.isFinite(nx) && Number.isFinite(ny) && x !== '' && y !== '') return nx - ny
+    return x < y ? -1 : 1
+  }
+  return 0
 }

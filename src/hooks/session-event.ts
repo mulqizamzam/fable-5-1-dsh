@@ -59,12 +59,15 @@ export function wireSessionEvent(ctx: Context): void {
     }
   })
 
-  // spec 30: postmortem emission on session end.
+  // spec 30: postmortem emission on session end; spec 10: handoff persistence.
   ctx.on('session/disposed', () => {
     const svc = ctx.fable51 as Fable51Policy
+    // Persist the handoff state (stage map + last checkpoint hash + pins)
+    // BEFORE the closing postmortem line, so the snapshot reflects the run.
+    const handoff = svc.handoffSnapshot()
     svc.recordWorklog({
       stage: 'session:end',
-      output: `postmortem: gates=${svc.gateLog.length} worklog=${svc.worklog.length} replans=${svc.replans} rung=${svc.rung}`,
+      output: `handoff ${handoff.id} (${handoff.hash.slice(0, 16)}…) postmortem: gates=${svc.gateLog.length} worklog=${svc.worklog.length} replans=${svc.replans} rung=${svc.rung}`,
       check: 'postmortem format',
       verdict: 'contributed',
       unverified: [],

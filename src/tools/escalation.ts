@@ -63,9 +63,9 @@ export function escalationTools(): ToolSpec[] {
       description: 'Account a replan against the budget (max 2); a third replan escalates (spec 14).',
       parameters: {
         type: 'object',
-        required: ['replanCount'],
+        required: [],
         properties: {
-          replanCount: { type: 'number', description: 'Replans requested so far, counting this one.' },
+          replanCount: { type: 'number', description: 'Advisory caller-reported replan count; the service budget counter decides.' },
         },
       },
       outputSchema: {
@@ -77,13 +77,14 @@ export function escalationTools(): ToolSpec[] {
           count: { type: 'number' },
         },
       },
-      execute(args, { service }) {
-        const { replanCount } = args as { replanCount: number }
-        const { count } = service.replan()
+      execute(_args, { service }) {
+        // The service counter is the source of truth: the argument is
+        // advisory only, so a caller cannot under- or over-report the budget.
+        const { count, escalate } = service.replan()
         const max = service.config.budget.maxReplans
         return {
-          allowed: replanCount <= max,
-          escalate: replanCount > max,
+          allowed: count <= max,
+          escalate,
           count,
         }
       },

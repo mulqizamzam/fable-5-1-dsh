@@ -21,6 +21,18 @@ interface PreStepPayload {
   signal: AbortSignal
 }
 
+/** Plain-text projection of a message's content, for signal detection (spec 6). */
+function messageText(message: UserMessage): string {
+  const content = (message as { content?: unknown }).content
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => (typeof block === 'object' && block !== null && 'text' in block ? String((block as { text?: unknown }).text ?? '') : ''))
+      .join(' ')
+  }
+  return ''
+}
+
 export function wireAgentPreStep(ctx: Context): void {
   ctx.on('agent/pre-step', async (payload: PreStepPayload, next: () => Promise<PreStepDecision>): Promise<PreStepDecision> => {
     const svc = ctx.fable51 as Fable51Policy
@@ -46,6 +58,24 @@ export function wireAgentPreStep(ctx: Context): void {
         unverified: [],
         at: Date.now(),
       })
+    }
+    // spec 6: pre-first-tool effort escalation — a search/multi-hop/ambiguity
+    // signal in the step's messages raises the effort tier one rung.
+    const messages = Array.isArray(payload.messages) ? payload.messages : []
+    const text = messages.map(messageText).join(' ')
+    const signals = svc.config.effort.escalateOn.filter((signal) => text.includes(signal))
+    if (signals.length > 0) {
+      const { from, to, escalated } = svc.escalateEffort()
+      if (escalated) {
+        svc.recordWorklog({
+          stage,
+          output: `effort escalated ${from} → ${to} on signals: ${signals.join(', ')}`,
+          check: 'effort escalation',
+          verdict: 'neutral',
+          unverified: [],
+          at: Date.now(),
+        })
+      }
     }
     // spec 71: backpressure — queue depth over budget throttles further forks.
     const throttled = svc.queueDepth > svc.config.reasoning.maxConcurrentPasses

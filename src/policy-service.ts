@@ -20,7 +20,7 @@ import { registerTools } from './tools/index.ts'
 import { PassLineage } from './state/lineage.ts'
 import { PolicyRegistry } from './state/registry.ts'
 import { ReasonCache } from './state/cache.ts'
-import { SnapshotStore } from './state/snapshots.ts'
+import { SnapshotStore, type Snapshot } from './state/snapshots.ts'
 import type { GateResult } from './types/gate.ts'
 import type { PassScore, PassVerdict, ReasoningPass } from './types/pass.ts'
 
@@ -48,6 +48,9 @@ export type ProvenanceTag =
 
 export type EscalationRung = 'retry' | 'replan' | 'downgrade' | 'ask'
 
+/** Reasoning-mode label (spec 15): interleaved thinking is not parallel reasoning. */
+export type ReasoningMode = 'parallel' | 'sequential' | 'interleaved'
+
 export interface ApprovalRequest {
   readonly action: string
   readonly irreversible: boolean
@@ -56,6 +59,7 @@ export interface ApprovalRequest {
 }
 
 const LADDER: readonly EscalationRung[] = ['retry', 'replan', 'downgrade', 'ask']
+const EFFORT_LADDER = ['low', 'mid', 'high', 'max'] as const
 
 export class Fable51Policy extends Service {
   static inject = ['tools', 'llm', 'sessions'] as const
@@ -71,7 +75,9 @@ export class Fable51Policy extends Service {
     }),
     effort: z.object({
       defaultTier: z.union(['low', 'mid', 'high', 'max'] as const).default('mid'),
-      escalateOn: z.array(z.union(['search', 'multihop', 'ambiguity'] as const)),
+      // Must mirror defaults.ts: a schema default of [] would overwrite the
+      // real default whenever the host materializes Config (spec 6).
+      escalateOn: z.array(z.union(['search', 'multihop', 'ambiguity'] as const)).default(['search', 'multihop', 'ambiguity']),
       costCeiling: z.number().default(2_000_000),
     }),
     budget: z.object({
@@ -140,10 +146,23 @@ export class Fable51Policy extends Service {
   mergesThisStage = 0
   /** Queue depth for backpressure (spec 71). */
   queueDepth = 0
+  /** Current effort tier, escalated on task signal (spec 6). */
+  effortTier: Fable51Config['effort']['defaultTier']
+  /** Reasoning-mode label per pass id (spec 15): parallel ≠ sequential ≠ interleaved. */
+  readonly passLabels = new Map<string, ReasoningMode>()
+  /** Per-turn convergence distances, oldest first (spec 58). */
+  readonly turnDistances: number[] = []
+  /** Turn index of the most recent new-evidence event, null when none (spec 58). */
+  lastEvidenceTurn: number | null = null
+  /** Turn counter driving the convergence window (spec 58). */
+  turnCount = 0
+  /** Per-stage token count of the previous turn, for the convergence distance (spec 58). */
+  readonly previousTurnTokens = new Map<string, number>()
 
   constructor(ctx: Context, config: Record<string, unknown> = {}) {
     super(ctx, 'fable51')
     this.config = resolveConfig(config)
+    this.effortTier = this.config.effort.defaultTier
     for (const policy of this.config.registry.policies) this.registry.register(policy)
     // PRD §3: hooks and tools wire at service construction; cordis disposes
     // listeners and tool registrations with the owning fiber automatically.
@@ -190,6 +209,80 @@ export class Fable51Policy extends Service {
 
   canMerge(): boolean {
     return this.mergesThisStage < this.config.budget.maxMergesPerStage
+  }
+
+  /** Consume one fork slot for the stage; false when the per-stage cap is spent (spec 96). */
+  recordFork(): boolean {
+    if (this.forksThisStage >= this.config.budget.maxForksPerStage) return false
+    this.forksThisStage += 1
+    return true
+  }
+
+  /** Consume one merge slot for the stage; false when the per-stage cap is spent (spec 96). */
+  recordMerge(): boolean {
+    if (this.mergesThisStage >= this.config.budget.maxMergesPerStage) return false
+    this.mergesThisStage += 1
+    return true
+  }
+
+  // ---- spec 6: effort escalation ----
+  escalateEffort(): { from: string; to: string; escalated: boolean } {
+    const from = this.effortTier
+    const index = EFFORT_LADDER.indexOf(from)
+    this.effortTier = EFFORT_LADDER[Math.min(index + 1, EFFORT_LADDER.length - 1)]!
+    return { from, to: this.effortTier, escalated: this.effortTier !== from }
+  }
+
+  // ---- spec 15: pass-mode labeling ----
+  labelPass(id: string, mode: ReasoningMode): void {
+    this.passLabels.set(id, mode)
+  }
+
+  // ---- spec 58: convergence tracking ----
+  /** Record one turn's distance from the previous turn (relative token delta). */
+  recordTurnDistance(distance: number): void {
+    this.turnDistances.push(distance)
+    this.turnCount += 1
+  }
+
+  /** Mark that new evidence arrived this turn; blocks convergence (spec 58). */
+  markEvidence(): void {
+    this.lastEvidenceTurn = this.turnCount
+  }
+
+  /** Converged = the last N turn distances are below δ AND no new evidence since (spec 58). */
+  converged(): { converged: boolean; window: number; delta: number; newEvidence: boolean } {
+    const n = this.config.reasoning.convergenceTurns
+    const delta = this.config.reasoning.convergenceDelta
+    const window = this.turnDistances.slice(-n)
+    const newEvidence = this.lastEvidenceTurn !== null && this.turnCount - this.lastEvidenceTurn < n
+    const stable = window.length >= n && window.every((distance) => distance < delta)
+    return { converged: stable && !newEvidence, window: window.length, delta, newEvidence }
+  }
+
+  // ---- specs 10/18: handoff persistence + rollback target ----
+  /** Persist the handoff state: stage map, counters, and the last checkpoint hash (spec 10). */
+  handoffSnapshot(id = 'session-handoff'): Snapshot {
+    return this.snapshots.create(id, {
+      stageMap: this.worklog.map((entry) => entry.stage),
+      gates: this.gateLog.length,
+      worklog: this.worklog.length,
+      replans: this.replans,
+      rung: this.rung,
+      lastHash: this.snapshots.latest()?.hash ?? 'sha256:none',
+      pinnedVersions: this.config.determinism.pinnedVersions,
+    })
+  }
+
+  /** Most recent checkpoint not marked unverified; the rollback target (specs 18/46). */
+  lastVerifiedSnapshot(): Snapshot | undefined {
+    for (const id of [...this.snapshots.ids()].reverse()) {
+      const snapshot = this.snapshots.get(id)
+      if (snapshot === undefined) continue
+      if (snapshot.data.verdict === 'unverified') continue
+      return snapshot
+    }
+    return undefined
   }
 
   // ---- spec 27: human-in-the-loop gate ----

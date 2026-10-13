@@ -1,5 +1,5 @@
 /**
- * tools/result hook — specs 5, 7, 12, 13, 47, 49.
+ * tools/result hook — specs 5, 7, 12, 13, 47, 49, 58.
  *
  * Verified contract: `tools/result` is EMIT-mode with payload
  * `(exec, result)`. Observers cannot rewrite the result; this hook tags
@@ -38,6 +38,8 @@ export function wireToolsResult(ctx: Context): void {
       unverified: verified ? [] : ['tool result carried no verifiable evidence'],
       at: Date.now(),
     })
+    // spec 58: a verified tool result is new evidence — it blocks convergence.
+    if (verified) svc.markEvidence()
     // spec 95: coarse cost accounting per tool call.
     svc.recordCost({
       stage: `tool:${exec.name ?? 'unknown'}`,
