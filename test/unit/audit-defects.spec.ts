@@ -128,6 +128,19 @@ describe('audit — state/registry (spec 100)', () => {
   })
 })
 
+describe('audit — config (specs 14, 96)', () => {
+  it('rejects a fractional counter instead of silently rounding the budget', async () => {
+    const { resolveConfig } = await import('../../src/config/defaults.ts')
+    for (const partial of [
+      { budget: { maxReplans: 0.5 } },
+      { budget: { maxMergesPerStage: 2.5 } },
+      { reasoning: { convergenceTurns: 1.5 } },
+    ]) {
+      assert.throws(() => resolveConfig(partial), 'a fractional counter must fail loud with its field path')
+    }
+  })
+})
+
 describe('audit — hooks (spec 6)', () => {
   it('effort escalates once per task, not once per pre-step over the whole transcript', async () => {
     const ctx = await setup()

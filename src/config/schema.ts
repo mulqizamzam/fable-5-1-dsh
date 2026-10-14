@@ -81,8 +81,11 @@ function fail(path: string, message: string): never {
   throw new ConfigError(path, message)
 }
 
-function num(value: unknown, path: string, { min, max }: { min?: number; max?: number } = {}): number {
+function num(value: unknown, path: string, { min, max, integer }: { min?: number; max?: number; integer?: boolean } = {}): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) fail(path, 'expected a finite number')
+  // A fractional counter is never what the operator meant: maxReplans 0.5
+  // escalates on the first replan.
+  if (integer === true && !Number.isSafeInteger(value)) fail(path, 'expected an integer')
   if (min !== undefined && value < min) fail(path, `must be >= ${min}`)
   if (max !== undefined && value > max) fail(path, `must be <= ${max}`)
   return value
@@ -139,20 +142,20 @@ export function validateConfig(raw: unknown): Fable51Config {
 
   const budget = obj(root.budget, 'config.budget')
   knownKeys('config.budget', budget, ['maxReplans', 'maxPassRetries', 'passTimeoutMs', 'stageTimeoutMs', 'stageTokenBudget', 'maxForkDepth', 'maxForksPerStage', 'maxMergesPerStage'])
-  const maxReplans = num(budget.maxReplans, 'config.budget.maxReplans', { min: 0, max: 10 })
-  const maxPassRetries = num(budget.maxPassRetries, 'config.budget.maxPassRetries', { min: 0, max: 10 })
-  const passTimeoutMs = num(budget.passTimeoutMs, 'config.budget.passTimeoutMs', { min: 1 })
-  const stageTimeoutMs = num(budget.stageTimeoutMs, 'config.budget.stageTimeoutMs', { min: 1 })
-  const stageTokenBudget = num(budget.stageTokenBudget, 'config.budget.stageTokenBudget', { min: 1 })
-  const maxForkDepth = num(budget.maxForkDepth, 'config.budget.maxForkDepth', { min: 1, max: 100 })
-  const maxForksPerStage = num(budget.maxForksPerStage, 'config.budget.maxForksPerStage', { min: 1, max: 1000 })
-  const maxMergesPerStage = num(budget.maxMergesPerStage, 'config.budget.maxMergesPerStage', { min: 1, max: 1000 })
+  const maxReplans = num(budget.maxReplans, 'config.budget.maxReplans', { min: 0, max: 10, integer: true })
+  const maxPassRetries = num(budget.maxPassRetries, 'config.budget.maxPassRetries', { min: 0, max: 10, integer: true })
+  const passTimeoutMs = num(budget.passTimeoutMs, 'config.budget.passTimeoutMs', { min: 1, integer: true })
+  const stageTimeoutMs = num(budget.stageTimeoutMs, 'config.budget.stageTimeoutMs', { min: 1, integer: true })
+  const stageTokenBudget = num(budget.stageTokenBudget, 'config.budget.stageTokenBudget', { min: 1, integer: true })
+  const maxForkDepth = num(budget.maxForkDepth, 'config.budget.maxForkDepth', { min: 1, max: 100, integer: true })
+  const maxForksPerStage = num(budget.maxForksPerStage, 'config.budget.maxForksPerStage', { min: 1, max: 1000, integer: true })
+  const maxMergesPerStage = num(budget.maxMergesPerStage, 'config.budget.maxMergesPerStage', { min: 1, max: 1000, integer: true })
 
   const reasoning = obj(root.reasoning, 'config.reasoning')
   knownKeys('config.reasoning', reasoning, ['maxConcurrentPasses', 'convergenceDelta', 'convergenceTurns', 'decayLambda', 'quorumThreshold'])
-  const maxConcurrentPasses = num(reasoning.maxConcurrentPasses, 'config.reasoning.maxConcurrentPasses', { min: 1, max: 1000 })
+  const maxConcurrentPasses = num(reasoning.maxConcurrentPasses, 'config.reasoning.maxConcurrentPasses', { min: 1, max: 1000, integer: true })
   const convergenceDelta = num(reasoning.convergenceDelta, 'config.reasoning.convergenceDelta', { min: 0, max: 1 })
-  const convergenceTurns = num(reasoning.convergenceTurns, 'config.reasoning.convergenceTurns', { min: 1, max: 1000 })
+  const convergenceTurns = num(reasoning.convergenceTurns, 'config.reasoning.convergenceTurns', { min: 1, max: 1000, integer: true })
   const decayLambda = num(reasoning.decayLambda, 'config.reasoning.decayLambda', { min: 0, max: 10 })
   const quorumThreshold = num(reasoning.quorumThreshold, 'config.reasoning.quorumThreshold', { min: 0, max: 1 })
 
