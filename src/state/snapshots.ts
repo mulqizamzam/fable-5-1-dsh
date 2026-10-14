@@ -20,6 +20,13 @@ export interface SnapshotDiff {
   readonly changed: readonly string[]
 }
 
+/** Deep copy + deep freeze: stored history must not follow the caller's object. */
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object') return value
+  for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
+  return Object.freeze(value)
+}
+
 export class SnapshotStore {
   private readonly snapshots = new Map<string, Snapshot>()
   private order: string[] = []
@@ -28,7 +35,11 @@ export class SnapshotStore {
   constructor(private readonly max = 256) {}
 
   create(id: string, data: Record<string, unknown>, at = Date.now()): Snapshot {
-    const snapshot: Snapshot = { id, at, hash: fingerprint(data), data: Object.freeze({ ...data }) }
+    // `{ ...data }` froze only the top level: nested values stayed shared with the
+    // caller, so a later mutation rewrote stored history and diff() reported no
+    // change between a verified and an unverified checkpoint.
+    const frozen = deepFreeze(structuredClone(data))
+    const snapshot: Snapshot = { id, at, hash: fingerprint(frozen), data: frozen }
     this.snapshots.set(id, snapshot)
     this.order = this.order.filter((x) => x !== id)
     this.order.push(id)
@@ -61,12 +72,14 @@ export class SnapshotStore {
     const added: string[] = []
     const removed: string[] = []
     const changed: string[] = []
+    // `in` walks the prototype chain, so a key shadowing an Object.prototype
+    // member read as present on both sides and its removal was reported nowhere.
     for (const key of Object.keys(to.data)) {
-      if (!(key in from.data)) added.push(key)
+      if (!Object.hasOwn(from.data, key)) added.push(key)
       else if (fingerprint(from.data[key]) !== fingerprint(to.data[key])) changed.push(key)
     }
     for (const key of Object.keys(from.data)) {
-      if (!(key in to.data)) removed.push(key)
+      if (!Object.hasOwn(to.data, key)) removed.push(key)
     }
     return { added: added.sort(), removed: removed.sort(), changed: changed.sort() }
   }

@@ -67,7 +67,10 @@ export function wireAgentPreStep(ctx: Context): void {
       const messages = Array.isArray(payload.messages) ? payload.messages : []
       const text = messages.map(messageText).join(' ')
       const signals = svc.config.effort.escalateOn.filter((signal) => text.includes(signal))
-      if (signals.length > 0) {
+      // Without this guard the accumulated transcript re-triggers the same signal
+      // on every later step and pins the tier at `max` within a single task.
+      if (signals.length > 0 && svc.effortEscalated !== true) {
+        svc.effortEscalated = true
         const { from, to, escalated } = svc.escalateEffort()
         if (escalated) {
           svc.recordWorklog({

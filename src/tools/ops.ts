@@ -53,7 +53,8 @@ export function opsTools(): ToolSpec[] {
         }
         const deadline = service.config.budget.stageTimeoutMs
         if (elapsedMs < deadline) return { expired: false, elapsedMs }
-        const snapshot = service.snapshots.create(`${stage}-timebox`, { stage, elapsedMs, verdict: 'unverified' })
+        // A constant id made every expiry of a stage overwrite the previous one.
+        const snapshot = service.snapshots.create(`${stage}-timebox-${elapsedMs}`, { stage, elapsedMs, verdict: 'unverified' })
         service.recordWorklog({
           stage,
           output: `stage timebox of ${deadline}ms expired at ${elapsedMs}ms`,
@@ -144,6 +145,11 @@ export function opsTools(): ToolSpec[] {
       },
       execute(args, { service }) {
         const { stage, verdict, tokens } = args as { stage: string; verdict: PassVerdict; tokens: number }
+        // Same rule timeboxing applies: a string would be echoed into the trace
+        // line and the worklog as if it were a measured token count.
+        if (typeof tokens !== 'number' || !Number.isFinite(tokens)) {
+          throw new Error('tokens must be a finite number')
+        }
         const at = Date.now()
         const traceId = fingerprint({ stage, verdict, tokens, at })
         const line = `${traceId} stage=${stage} tokens=${tokens} verdict=${verdict} at=${at}`

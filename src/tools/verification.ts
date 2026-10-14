@@ -180,6 +180,9 @@ export function verificationTools(): ToolSpec[] {
     },
     {
       spec: '19',
+      // Reads the cache to answer firstSeen, so a replayed envelope would report
+      // the first call's answer forever (spec 19).
+      effectful: true,
       name: 'idempotency',
       description: 'Fingerprint an input and check the content-addressed cache before a rerun; firstSeen is true only on the first call (spec 19).',
       parameters: {
@@ -261,8 +264,9 @@ export function verificationTools(): ToolSpec[] {
       execute(args): { verdict: string; chain: { layer: string; checks: string | null }[]; unverified: string[] } {
         const raw = asRecord(args).layers
         // Without this the registry never checks parameters and layers.map blows up.
-        if (!Array.isArray(raw) || raw.some((layer: unknown) => typeof layer !== 'string')) {
-          throw new Error('layers must be an array of strings')
+        // Two blank layers are not a two-layer chain, so they must not certify.
+        if (!Array.isArray(raw) || raw.some((layer: unknown) => typeof layer !== 'string' || layer.trim().length === 0)) {
+          throw new Error('layers must be an array of non-empty strings')
         }
         const layers = raw as string[]
         if (layers.length < 2) {

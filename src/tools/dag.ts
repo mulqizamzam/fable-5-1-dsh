@@ -58,6 +58,9 @@ function nodesOf(edges: readonly Edge[]): string[] {
 
 function graphOf(nodes: readonly string[], edges: readonly Edge[]): Graph {
   const declared = new Set(nodes)
+  // A repeated id is not a second stage: it made the topological order list the
+  // same stage twice, and a consumer walking the order would run it twice.
+  if (declared.size !== nodes.length) throw new Error(`stage graph repeats a node id: ${nodes.join(', ')}`)
   const adjacency = new Map<string, string[]>()
   for (const node of nodes) adjacency.set(node, [])
   for (const edge of edges) {

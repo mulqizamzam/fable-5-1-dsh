@@ -107,7 +107,11 @@ export function reasoningFlowTools(): ToolSpec[] {
         const seen = new Set<string>()
         const unique: string[] = []
         const duplicates: string[] = []
-        for (const item of requireArray(record, 'items') as string[]) {
+        const items = requireArray(record, 'items')
+        // A non-string item reached the envelope and the host rejected the whole
+        // call: a malformed argument is a tool-level answer, never a host throw.
+        if (items.some((item: unknown) => typeof item !== 'string')) throw new Error('items must be an array of strings')
+        for (const item of items as string[]) {
           if (seen.has(item)) duplicates.push(item)
           else { seen.add(item); unique.push(item) }
         }
@@ -162,8 +166,10 @@ export function reasoningFlowTools(): ToolSpec[] {
       outputSchema: { type: 'object', required: ['match', 'actualHash'], properties: { match: { type: 'boolean' }, actualHash: { type: 'string' } } },
       execute(args) {
         const record = asRecord(args)
-        const actual = record.actual
-        const actualHash = fingerprint(actual)
+        // Without this guard a missing `actual` fingerprints as null, so a
+        // traceHash of null "matches" an artifact nobody produced.
+        if (!Object.hasOwn(record, 'actual')) throw new Error('actual is required')
+        const actualHash = fingerprint(record.actual)
         return { match: actualHash === requireString(record, 'traceHash'), actualHash }
       },
     },
@@ -297,6 +303,14 @@ export function reasoningFlowTools(): ToolSpec[] {
       execute(args) {
         const record = asRecord(args)
         const groups = requireArray(record, 'facts') as unknown as FactGroup[]
+        // A fact whose values were never supplied has not been compared, so it
+        // must not read as agreeing.
+        for (const group of groups) {
+          if (typeof group?.fact !== 'string' || group.fact.length === 0 || !Array.isArray(group.values)
+            || group.values.some((value: unknown) => typeof value !== 'string')) {
+            throw new Error('each fact requires a non-empty fact and an array of string values')
+          }
+        }
         return { drifts: groups.filter((group) => new Set(group.values).size > 1).map((group) => group.fact).sort() }
       },
     },

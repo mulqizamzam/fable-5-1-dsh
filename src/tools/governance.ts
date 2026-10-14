@@ -116,7 +116,13 @@ export function governanceTools(): ToolSpec[] {
         // as the verified branch, which is the one outcome this tool exists to prevent.
         if (typeof finalVerified !== 'boolean') throw new Error('finalVerified must be a boolean')
         if (finalVerified) return { shipped: 'final' }
-        return { shipped: 'prior', priorOutput, unverified: unverified ?? [] }
+        // An omitted list defaulted to [], which let judge() certify an
+        // unverified delivery as verified (spec 20).
+        return {
+          shipped: 'prior',
+          priorOutput,
+          unverified: unverified ?? ['final stage unverified and no unverified list supplied'],
+        }
       },
     },
     {
@@ -216,11 +222,18 @@ export function governanceTools(): ToolSpec[] {
       },
       execute(args, { service }) {
         const { liveIds, keepLastN } = args as { liveIds: string[]; keepLastN: number }
+        // Same hazard as keepLastN below: an omitted liveIds is an empty keep-set,
+        // so a malformed call collects the entire lineage.
+        if (!Array.isArray(liveIds) || liveIds.some((id: unknown) => typeof id !== 'string')) {
+          throw new Error('liveIds must be an array of strings')
+        }
         // `Math.max(0, NaN)` is NaN and `slice(NaN)` is `slice(0)`, so an
         // unvalidated keepLastN makes this destructive call empty the whole lineage.
         if (typeof keepLastN !== 'number' || !Number.isFinite(keepLastN)) {
           throw new Error('keepLastN must be a finite number')
         }
+        // A negative count is a typo, not a request to keep nothing.
+        if (keepLastN < 0) throw new Error('keepLastN must not be negative')
         const dropped = service.lineage.gc(liveIds, keepLastN)
         return { dropped: [...dropped], kept: service.lineage.size() }
       },

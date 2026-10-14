@@ -7,6 +7,10 @@
 import { createHash } from 'node:crypto'
 
 export function canonicalize(value: unknown): string {
+  // `JSON.stringify(undefined)` is undefined, so the `?? 'null'` fallback made a
+  // missing artifact fingerprint identically to a null one, and a verification
+  // tool then certified "absent" as "matches null".
+  if (value === undefined) return 'undefined'
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null'
   if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`
   const entries = Object.entries(value as Record<string, unknown>)

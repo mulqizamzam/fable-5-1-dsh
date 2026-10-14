@@ -545,13 +545,19 @@ export function reasoningCoreTools(): ToolSpec[] {
         const merged = strategy === 'intersection'
           ? ordered.filter((value) => sets.every((set) => set.includes(value)))
           : ordered
-        // spec 96: every merge consumes one slot of the per-stage merge budget.
-        service.recordMerge()
+        // spec 96: every merge consumes one slot of the per-stage merge budget,
+        // so past the cap the merge is refused instead of silently proceeding.
+        if (!service.recordMerge()) {
+          throw new Error(`per-stage merge budget spent (maxMergesPerStage=${service.config.budget.maxMergesPerStage})`)
+        }
         return { merged, strategy }
       },
     },
     {
       spec: '46',
+      // The answer reads the mutable snapshot store, so a replayed envelope
+      // would certify a stale rollback target (spec 46 with spec 19).
+      effectful: true,
       name: 'reasoning-rollback',
       description: 'Revert reasoning to the most recent consistent checkpoint; null when no checkpoint exists (spec 46).',
       parameters: {

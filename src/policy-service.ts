@@ -171,6 +171,8 @@ export class Fable51Policy extends Service {
   mergesThisStage = 0
   /** Current effort tier, escalated on task signal (spec 6). */
   effortTier: Fable51Config['effort']['defaultTier']
+  /** Spec 6 escalates once per task; the transcript keeps the signal for every later step. */
+  effortEscalated = false
   /** Reasoning-mode label per pass id (spec 15): parallel ≠ sequential ≠ interleaved. */
   readonly passLabels = new Map<string, ReasoningMode>()
   /** Per-turn convergence distances, oldest first (spec 58). */
@@ -232,6 +234,26 @@ export class Fable51Policy extends Service {
 
   canMerge(): boolean {
     return this.mergesThisStage < this.config.budget.maxMergesPerStage
+  }
+
+  /**
+   * Per-session episode state (specs 14/28/58/96). The service outlives the
+   * session, so without this reset a fresh session inherits the previous
+   * session's escalation rung, replan count and convergence window.
+   */
+  resetEpisodeState(): void {
+    this.rung = 0
+    this.replans = 0
+    this.forksThisStage = 0
+    this.mergesThisStage = 0
+    this.effortTier = this.config.effort.defaultTier
+    this.effortEscalated = false
+    this.passLabels.clear()
+    this.turnDistances.length = 0
+    this.lastEvidenceTurn = null
+    this.turnCount = 0
+    this.previousTurnTokens.clear()
+    this.stageTokens.clear()
   }
 
   /** Consume one fork slot for the stage; false when the per-stage cap is spent (spec 96). */
@@ -336,21 +358,23 @@ export class Fable51Policy extends Service {
   }
 
   // ---- spec 95: cost accounting ----
+  /** Running per-stage totals, kept beside the ring so eviction cannot roll them back. */
+  private readonly stageCosts = new Map<string, { tokens: number; latencyMs: number; risk: number }>()
+
   recordCost(entry: CostLedgerEntry): void {
     pushCapped(this.costLedger, entry, COST_LEDGER_CAP)
+    // Re-summing the retained entries made the "running stage cost" shrink once
+    // the ring dropped a booking, so budget numbers moved backwards.
+    const running = this.stageCosts.get(entry.stage) ?? { tokens: 0, latencyMs: 0, risk: 0 }
+    this.stageCosts.set(entry.stage, {
+      tokens: running.tokens + entry.tokens,
+      latencyMs: running.latencyMs + entry.latencyMs,
+      risk: running.risk + entry.riskWeight,
+    })
   }
 
   stageCost(stage: string): { tokens: number; latencyMs: number; risk: number } {
-    let tokens = 0
-    let latencyMs = 0
-    let risk = 0
-    for (const entry of this.costLedger) {
-      if (entry.stage !== stage) continue
-      tokens += entry.tokens
-      latencyMs += entry.latencyMs
-      risk += entry.riskWeight
-    }
-    return { tokens, latencyMs, risk }
+    return this.stageCosts.get(stage) ?? { tokens: 0, latencyMs: 0, risk: 0 }
   }
 
   // ---- spec 89: weighted pass score ----

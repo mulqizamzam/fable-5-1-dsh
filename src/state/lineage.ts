@@ -67,8 +67,11 @@ export class PassLineage {
         cursor = this.passes.get(cursor)?.parentId ?? null
       }
     }
-    const ordered = [...this.passes.keys()].sort()
-    for (const id of ordered.slice(Math.max(0, ordered.length - keepLastN))) live.add(id)
+    // Map iteration order is creation order, so the tail of it IS the most
+    // recent slice; sorting by id kept the lexicographically largest ids
+    // (pass-9 over pass-10) and collected the newest pass instead.
+    const ordered = [...this.passes.keys()]
+    for (const id of ordered.slice(Math.max(0, ordered.length - Math.max(0, keepLastN)))) live.add(id)
     for (const id of this.auditKeep) live.add(id)
     const dropped: string[] = []
     for (const id of ordered) {
@@ -120,7 +123,10 @@ export class PassLineage {
 
   verdicts(): Record<PassVerdict, number> {
     const out: Record<PassVerdict, number> = { contributed: 0, neutral: 0, discarded: 0 }
-    for (const pass of this.passes.values()) out[pass.verdict] += 1
+    // An out-of-contract verdict would add a phantom key and count NaN.
+    for (const pass of this.passes.values()) {
+      if (Object.hasOwn(out, pass.verdict)) out[pass.verdict] += 1
+    }
     return out
   }
 }

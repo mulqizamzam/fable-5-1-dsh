@@ -167,7 +167,10 @@ export function costTools(): ToolSpec[] {
       execute(args, { service }): { breaches: string[]; action: 'ok' | 'log+degrade' } {
         const record = args as Record<string, unknown>
         const { targets } = record as { targets?: Record<string, unknown> }
-        const passId = String(record.passId ?? '')
+        // Without this the breach books under the shared stage `pass:` and merges
+        // unrelated id-less calls; pass-cost-accounting already guards its passId.
+        if (typeof record.passId !== 'string' || record.passId.length === 0) throw new Error('passId must be a non-empty string')
+        const passId = record.passId
         // A NaN measurement compares false against every target, so it would
         // report "ok" for a pass nobody measured.
         const latencyMs = finiteNumber(record, 'latencyMs')

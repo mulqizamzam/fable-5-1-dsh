@@ -20,6 +20,9 @@ export function wireSessionEvent(ctx: Context): void {
   // spec 29: dependency pins recorded at session start; drift blocks.
   ctx.on('session/created', () => {
     const svc = ctx.fable51 as Fable51Policy
+    // The service is host-wide and outlives the session: a new session must not
+    // start on the previous session's escalation rung and replan count.
+    svc.resetEpisodeState()
     const pinned = svc.config.determinism.pinnedVersions
     svc.recordWorklog({
       stage: 'session:start',
@@ -39,6 +42,8 @@ export function wireSessionEvent(ctx: Context): void {
         // new stage: reset fork/merge counters (spec 96 budget window).
         svc.forksThisStage = 0
         svc.mergesThisStage = 0
+        // spec 6 escalates once per task; a new turn is a new task.
+        svc.effortEscalated = false
         // spec 22 is a per-turn budget: without this it was a lifetime budget
         // that left every later stream of every session over the limit.
         svc.stageTokens.clear()

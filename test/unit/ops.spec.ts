@@ -77,8 +77,9 @@ describe('fable51 ops tools', () => {
       assert.equal(value.spec, '21')
       assert.equal(value.rerun, false)
       assert.equal(value.output.expired, true)
-      assert.equal(value.output.snapshotId, 'build-timebox')
-      const snapshot = ctx.fable51.snapshots.get('build-timebox')
+      // The id carries elapsedMs so a second expiry does not overwrite the first.
+      assert.equal(value.output.snapshotId, 'build-timebox-700000')
+      const snapshot = ctx.fable51.snapshots.get(value.output.snapshotId as string)
       assert.ok(snapshot, 'expiry must write a snapshot')
       assert.equal(snapshot?.data.verdict, 'unverified')
       const logged = worklogFor(ctx, 'build')

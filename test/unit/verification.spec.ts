@@ -216,9 +216,12 @@ describe('spec 19 — idempotency', () => {
       assert.match(output.hash, /^sha256:[0-9a-f]{64}$/)
       assert.equal(output.hash, ctx.fable51.cache.key({ stage: 'verify', files: 3 }, 'idempotency-check', 'none'))
 
+      // The tool reads the cache to answer firstSeen, so it is effectful: an
+      // identical call re-executes and reports the input was already fingerprinted.
       const replay = await call(ctx, 'idempotency', { input: { stage: 'verify', files: 3 } })
-      assert.equal(replay.rerun, true)
-      assert.deepEqual(replay.output, first.output)
+      assert.equal(replay.rerun, false)
+      assert.equal((replay.output as { hash: string }).hash, output.hash)
+      assert.equal((replay.output as { firstSeen: boolean }).firstSeen, false)
 
       const other = await call(ctx, 'idempotency', { input: { stage: 'verify', files: 4 } })
       assert.equal((other.output as { hash: string }).hash !== output.hash, true)

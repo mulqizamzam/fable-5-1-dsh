@@ -88,6 +88,7 @@ const EFFECTFUL = new Set([
   'fable51_reasoning-forking',
   'fable51_reasoning-checkpoint',
   'fable51_merge-strategy',
+  'fable51_reasoning-rollback',
 ])
 
 async function runIdempotent(ctx: Context, name: string, args: Record<string, unknown>): Promise<Envelope> {
@@ -459,16 +460,16 @@ describe('spec 46 — reasoning-rollback', () => {
     const ctx = await setup()
     try {
       const none = await runIdempotent(ctx, 'fable51_reasoning-rollback', { passId: 'p1' })
+      assert.equal(none.output.revertedTo, null)
       assert.equal(none.spec, '46')
       assert.equal(none.output.revertedTo, null)
       await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p2', state: { turn: 1 } })
-      // A distinct passId is used per query: the bundle cache (spec 19) replays
-      // a recorded answer for identical arguments, which is the intended
-      // no-double-write behaviour, not a stale read of the snapshot index.
-      const reverted = await run(ctx, 'fable51_reasoning-rollback', { passId: 'rollback-after-p2' })
+      // The same passId is deliberate: the tool is effectful, so an identical
+      // query must re-read the snapshot index instead of replaying a stale target.
+      const reverted = await run(ctx, 'fable51_reasoning-rollback', { passId: 'p1' })
       assert.equal(reverted.output.revertedTo, 'p2')
       await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p3', state: { turn: 2 } })
-      const newest = await run(ctx, 'fable51_reasoning-rollback', { passId: 'rollback-after-p3' })
+      const newest = await run(ctx, 'fable51_reasoning-rollback', { passId: 'p1' })
       assert.equal(newest.output.revertedTo, 'p3')
       await expectError(ctx, 'fable51_reasoning-rollback', { passId: '' })
     } finally {

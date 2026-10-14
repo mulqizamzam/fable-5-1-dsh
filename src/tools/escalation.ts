@@ -46,6 +46,10 @@ export function escalationTools(): ToolSpec[] {
           replanCount?: number
         }
         const list = Array.isArray(readings) ? readings : []
+        // A stringly-typed count reads as zero replans and silently proceeds.
+        if (replanCount !== undefined && (typeof replanCount !== 'number' || !Number.isFinite(replanCount))) {
+          throw new Error('replanCount must be a finite number')
+        }
         const replans = typeof replanCount === 'number' ? replanCount : 0
         const reasons: string[] = []
         if (list.length >= 2) reasons.push(`${list.length} competing readings`)
@@ -156,7 +160,10 @@ export function escalationTools(): ToolSpec[] {
       },
       execute(args, { service }) {
         const { failed } = args as { failed: boolean }
-        const rung = failed === true ? service.nextRung() : rungAt(service.rung)
+        // A truthy non-boolean would be read as a success: the ladder would not
+        // advance on a failure that happened.
+        if (typeof failed !== 'boolean') throw new Error('failed must be a boolean')
+        const rung = failed ? service.nextRung() : rungAt(service.rung)
         return { rung, ladder: [...LADDER] }
       },
     },
@@ -187,9 +194,14 @@ export function escalationTools(): ToolSpec[] {
           converged: boolean
           contradiction: boolean
         }
-        if (budgetExceeded === true) return { abort: true, reason: 'budget exceeded' }
-        if (contradiction === true) return { abort: true, reason: 'contradiction detected' }
-        if (converged === true) return { abort: false, reason: 'converged' }
+        // Every one of these flags is a safety gate: a truthy non-boolean must
+        // not read as the safe branch.
+        for (const flag of [budgetExceeded, converged, contradiction]) {
+          if (typeof flag !== 'boolean') throw new Error('budgetExceeded, converged and contradiction must be booleans')
+        }
+        if (budgetExceeded) return { abort: true, reason: 'budget exceeded' }
+        if (contradiction) return { abort: true, reason: 'contradiction detected' }
+        if (converged) return { abort: false, reason: 'converged' }
         return { abort: false, reason: 'no abort criterion met' }
       },
     },

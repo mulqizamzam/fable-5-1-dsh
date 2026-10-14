@@ -24,15 +24,20 @@ export class PolicyRegistry {
     if (versions.some((v) => v.version === policy.version)) {
       throw new Error(`policy ${policy.id}@${policy.version} already exists — mutation is forbidden, register a new version`)
     }
-    const next = [...versions, policy].sort(compareVersion)
-    this.records.set(policy.id, next)
-    if (policy.active) {
-      for (const prior of next) {
-        if (prior !== policy && this.active.get(policy.id) === prior.version) this.active.set(policy.id, policy.version)
-      }
-      this.active.set(policy.id, policy.version)
-    }
-    return policy
+    // Store a frozen copy: the service hands over a live reference into
+    // config.registry.policies, and a registered policy is immutable (spec 100).
+    const record: PolicyRecord = Object.freeze({ ...policy })
+    const candidates = [...versions, record]
+    // Exactly one active record per id, and it is the highest active version,
+    // not simply the one registered last.
+    const winner = candidates.filter((v) => v.active).sort(compareVersion).at(-1)
+    this.records.set(policy.id, candidates
+      .map((v) => (winner !== undefined && v.version !== winner.version
+        ? Object.freeze({ ...v, active: false })
+        : v))
+      .sort(compareVersion))
+    if (winner !== undefined) this.active.set(policy.id, winner.version)
+    return record
   }
 
   getActive(id: string): PolicyRecord | undefined {

@@ -226,6 +226,9 @@ export function contextTools(): ToolSpec[] {
     },
     {
       spec: '33',
+      // Reads live stageTokens: a replayed answer would report the headroom of
+      // the first call and leave the interleaved-thinking cap permanently open.
+      effectful: true,
       name: 'interleaved-budget',
       description: 'Cap interleaved-thinking tokens per tool call against the stage budget headroom (spec 33).',
       parameters: {
