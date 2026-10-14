@@ -40,7 +40,7 @@ describe('Gate 6 — synthetic session end-to-end', () => {
       await (ctx as unknown as { waterfall(t: unknown, n: string, p: unknown, next: () => Promise<unknown>): Promise<unknown> })
         .waterfall(ctx, 'agent/pre-step', { messages: [{}, {}, {}], turn: 1, step: 1 }, async () => ({ kind: 'enter' }))
       // --- context overflow → spill decision (spec 1) ---
-      const spill = await execute(ctx, 'fable51.context-management', { fillRatio: 0.95 })
+      const spill = await execute(ctx, 'fable51_context-management', { fillRatio: 0.95 })
       assert.equal((spill.value as { output: { action: string } }).output.action, 'spill')
       // --- verification gate FAILS then ROLLBACK (specs 5, 18, 46) ---
       const svc = ctx.fable51
@@ -62,10 +62,10 @@ describe('Gate 6 — synthetic session end-to-end', () => {
       svc.recordPass(merge)
       assert.deepEqual(svc.lineage.ancestors('merge-1'), ['fork-1'])
       // --- fork decision + order-independent merge through the tool surface (specs 31, 91) ---
-      const forkDecision = await execute(ctx, 'fable51.reasoning-forking', { candidateCount: 2, budgetLeft: 5000 })
+      const forkDecision = await execute(ctx, 'fable51_reasoning-forking', { candidateCount: 2, budgetLeft: 5000 })
       assert.equal((forkDecision.value as { output: { decision: string } }).output.decision, 'fork')
-      const mergeA = await execute(ctx, 'fable51.pass-merge-idempotency', { outputs: [{ a: 1 }, { b: 2 }] })
-      const mergeB = await execute(ctx, 'fable51.pass-merge-idempotency', { outputs: [{ b: 2 }, { a: 1 }] })
+      const mergeA = await execute(ctx, 'fable51_pass-merge-idempotency', { outputs: [{ a: 1 }, { b: 2 }] })
+      const mergeB = await execute(ctx, 'fable51_pass-merge-idempotency', { outputs: [{ b: 2 }, { a: 1 }] })
       assert.equal(
         JSON.stringify((mergeA.value as { output: { merged: unknown } }).output.merged),
         JSON.stringify((mergeB.value as { output: { merged: unknown } }).output.merged),

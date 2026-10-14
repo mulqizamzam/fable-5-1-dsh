@@ -38,7 +38,7 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>): 
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: ToolCallId(`call-${name}-${Math.random().toString(36).slice(2)}`),
-    name: `fable51.${name}`,
+    name: `fable51_${name}`,
     arguments: args,
   })
   return result as { isError: boolean; value?: Envelope; content?: unknown }
@@ -46,8 +46,8 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>): 
 
 async function run(ctx: Context, name: string, args: Record<string, unknown>): Promise<Envelope> {
   const result = await call(ctx, name, args)
-  assert.equal(result.isError, false, `fable51.${name} failed: ${JSON.stringify(result.content)}`)
-  assert.ok(result.value, `fable51.${name} returned no value`)
+  assert.equal(result.isError, false, `fable51_${name} failed: ${JSON.stringify(result.content)}`)
+  assert.ok(result.value, `fable51_${name} returned no value`)
   assert.equal(result.value.ok, true)
   return result.value
 }
@@ -55,10 +55,10 @@ async function run(ctx: Context, name: string, args: Record<string, unknown>): P
 async function runFails(ctx: Context, name: string, args: Record<string, unknown>): Promise<string> {
   const result = await call(ctx, name, args)
   // A rejected argument is a tool-level answer now, never a host-level throw.
-  assert.equal(result.isError, false, `fable51.${name} must not surface a host-level tool error`)
+  assert.equal(result.isError, false, `fable51_${name} must not surface a host-level tool error`)
   const value = result.value
-  assert.ok(value, `fable51.${name} returned no envelope for ${JSON.stringify(args)}`)
-  assert.equal(value.ok, false, `fable51.${name} must reject ${JSON.stringify(args)}`)
+  assert.ok(value, `fable51_${name} returned no envelope for ${JSON.stringify(args)}`)
+  assert.equal(value.ok, false, `fable51_${name} must reject ${JSON.stringify(args)}`)
   assert.equal(value.verdict, 'unverified')
   const { error } = value.output as { error?: unknown }
   assert.equal(typeof error, 'string', 'a rejected call must carry a reason in output.error')
@@ -307,7 +307,7 @@ describe('fable51.* namespace', () => {
       const names = ctx.tools.schemas().map((schema) => schema.name)
       assert.ok(names.length > 0, 'the bundle must register tools')
       for (const name of names) {
-        assert.match(name, /^fable51\./, `tool ${name} must stay in the fable51 namespace`)
+        assert.match(name, /^fable51_/, `tool ${name} must stay in the fable51 namespace`)
       }
       assert.equal(new Set(names).size, names.length, 'a tool name must be registered once')
       for (const [name, spec] of [
@@ -316,7 +316,7 @@ describe('fable51.* namespace', () => {
         ['deadlock-detection', '50'],
         ['pass-dependency-inference', '93'],
       ] as const) {
-        assert.ok(names.includes(`fable51.${name}`), `fable51.${name} must be registered — registered: ${names.join(', ')}`)
+        assert.ok(names.includes(`fable51_${name}`), `fable51_${name} must be registered — registered: ${names.join(', ')}`)
         const value = await run(ctx, name, name === 'reasoning-dag'
           ? { passId: 'ns-pass', deps: [] }
           : name === 'deadlock-detection'

@@ -44,10 +44,10 @@ async function run(ctx: Context, name: string, args: Record<string, unknown>): P
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: ToolCallId(`call-${name}`),
-    name: `fable51.${name}`,
+    name: `fable51_${name}`,
     arguments: args,
   })
-  assert.equal(result.isError, false, `tool fable51.${name} failed: ${JSON.stringify(result.content)}`)
+  assert.equal(result.isError, false, `tool fable51_${name} failed: ${JSON.stringify(result.content)}`)
   return result.value as unknown as Envelope
 }
 
@@ -427,10 +427,10 @@ describe('governance namespace', () => {
     try {
       const names = ctx.tools.schemas().map((s) => s.name)
       for (const spec of governanceTools()) {
-        assert.ok(names.includes(`fable51.${spec.name}`), `expected fable51.${spec.name} in ${names.join(',')}`)
+        assert.ok(names.includes(`fable51_${spec.name}`), `expected fable51_${spec.name} in ${names.join(',')}`)
       }
       for (const name of names) {
-        assert.match(name, /^fable51\./, `tool ${name} must stay in the fable51 namespace`)
+        assert.match(name, /^fable51_/, `tool ${name} must stay in the fable51 namespace`)
       }
     } finally {
       await ctx.fiber.dispose()

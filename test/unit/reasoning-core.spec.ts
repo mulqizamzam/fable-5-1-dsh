@@ -25,19 +25,19 @@ import { defineTool } from '../../src/tools/shared.ts'
 import { fingerprint } from '../../src/state/cache.ts'
 
 const TOOL_NAMES = [
-  'fable51.reasoning-forking',
-  'fable51.hypothesis-pruning',
-  'fable51.chain-vs-tree',
-  'fable51.parallel-tool-feed',
-  'fable51.reasoning-checkpoint',
-  'fable51.contradiction-detection',
-  'fable51.confidence-scoring',
-  'fable51.speculative-execution',
-  'fable51.early-exit',
-  'fable51.divergence-control',
-  'fable51.merge-strategy',
-  'fable51.reasoning-rollback',
-  'fable51.reasoning-trace-format',
+  'fable51_reasoning-forking',
+  'fable51_hypothesis-pruning',
+  'fable51_chain-vs-tree',
+  'fable51_parallel-tool-feed',
+  'fable51_reasoning-checkpoint',
+  'fable51_contradiction-detection',
+  'fable51_confidence-scoring',
+  'fable51_speculative-execution',
+  'fable51_early-exit',
+  'fable51_divergence-control',
+  'fable51_merge-strategy',
+  'fable51_reasoning-rollback',
+  'fable51_reasoning-trace-format',
 ]
 
 async function setup(): Promise<Context> {
@@ -49,7 +49,7 @@ async function setup(): Promise<Context> {
   await ctx.plugin(Fable51Policy)
   const registered = new Set(ctx.tools.schemas().map((schema) => schema.name))
   for (const spec of reasoningCoreTools()) {
-    const name = `fable51.${spec.name}`
+    const name = `fable51_${spec.name}`
     if (registered.has(name)) continue
     ctx.tools.register(defineTool(spec, { service: ctx.fable51 }))
   }
@@ -85,9 +85,9 @@ async function run(ctx: Context, name: string, args: Record<string, unknown>): P
 
 // specs 31/38/45 mutate service state, so they bypass the cache; the rest are pure.
 const EFFECTFUL = new Set([
-  'fable51.reasoning-forking',
-  'fable51.reasoning-checkpoint',
-  'fable51.merge-strategy',
+  'fable51_reasoning-forking',
+  'fable51_reasoning-checkpoint',
+  'fable51_merge-strategy',
 ])
 
 async function runIdempotent(ctx: Context, name: string, args: Record<string, unknown>): Promise<Envelope> {
@@ -132,9 +132,9 @@ describe('fable51 namespace', () => {
         assert.ok(names.includes(expected), `expected ${expected} in [${names.join(', ')}]`)
       }
       for (const name of names) {
-        assert.match(name, /^fable51\./, `tool ${name} must stay in the fable51 namespace`)
+        assert.match(name, /^fable51_/, `tool ${name} must stay in the fable51 namespace`)
       }
-      for (const bare of TOOL_NAMES.map((name) => name.slice('fable51.'.length))) {
+      for (const bare of TOOL_NAMES.map((name) => name.slice('fable51_'.length))) {
         assert.ok(!names.includes(bare), `no un-namespaced tool ${bare} may exist at the root`)
       }
     } finally {
@@ -145,10 +145,10 @@ describe('fable51 namespace', () => {
   it('appends one tool:<name> worklog line per execution, counted by stage only', async () => {
     const ctx = await setup()
     try {
-      await run(ctx, 'fable51.chain-vs-tree', { branchFactor: 2 })
-      await run(ctx, 'fable51.reasoning-forking', { candidateCount: 3, budgetLeft: 1 })
-      const forkLines = ctx.fable51.worklog.filter((entry) => entry.stage === 'tool:fable51.reasoning-forking')
-      const chainLines = ctx.fable51.worklog.filter((entry) => entry.stage === 'tool:fable51.chain-vs-tree')
+      await run(ctx, 'fable51_chain-vs-tree', { branchFactor: 2 })
+      await run(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 1 })
+      const forkLines = ctx.fable51.worklog.filter((entry) => entry.stage === 'tool:fable51_reasoning-forking')
+      const chainLines = ctx.fable51.worklog.filter((entry) => entry.stage === 'tool:fable51_chain-vs-tree')
       assert.equal(forkLines.length, 1, 'one worklog line per execution for the forking stage')
       assert.equal(chainLines.length, 1, 'one worklog line per execution for the chain-vs-tree stage')
       assert.ok(ctx.fable51.worklog.length > forkLines.length, 'the worklog array holds other stages — never count it whole')
@@ -162,15 +162,15 @@ describe('spec 31 — reasoning-forking', () => {
   it('forks with candidates and budget, merges without budget, keeps one, discards none', async () => {
     const ctx = await setup()
     try {
-      const fork = await runIdempotent(ctx, 'fable51.reasoning-forking', { candidateCount: 3, budgetLeft: 2 })
+      const fork = await runIdempotent(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 2 })
       assert.equal(fork.spec, '31')
       assert.equal(fork.output.decision, 'fork')
       assert.equal(ctx.fable51.forksThisStage, 2, 'the repeated fork must consume the stage budget twice — a cache hit skipped recordFork')
-      const merge = await run(ctx, 'fable51.reasoning-forking', { candidateCount: 3, budgetLeft: 0 })
+      const merge = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 0 })
       assert.equal(merge.output.decision, 'merge')
-      const keep = await run(ctx, 'fable51.reasoning-forking', { candidateCount: 1, budgetLeft: 0 })
+      const keep = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 1, budgetLeft: 0 })
       assert.equal(keep.output.decision, 'keep')
-      const discard = await run(ctx, 'fable51.reasoning-forking', { candidateCount: 0, budgetLeft: 9 })
+      const discard = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 0, budgetLeft: 9 })
       assert.equal(discard.output.decision, 'discard')
     } finally {
       await ctx.fiber.dispose()
@@ -180,8 +180,8 @@ describe('spec 31 — reasoning-forking', () => {
   it('rejects a negative candidate count or a negative budget', async () => {
     const ctx = await setup()
     try {
-      await expectError(ctx, 'fable51.reasoning-forking', { candidateCount: -1, budgetLeft: 1 })
-      await expectError(ctx, 'fable51.reasoning-forking', { candidateCount: 2, budgetLeft: -1 })
+      await expectError(ctx, 'fable51_reasoning-forking', { candidateCount: -1, budgetLeft: 1 })
+      await expectError(ctx, 'fable51_reasoning-forking', { candidateCount: 2, budgetLeft: -1 })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -192,7 +192,7 @@ describe('spec 32 — hypothesis-pruning', () => {
   it('retains the top-k by score with id-ascending tie-break and reports the pruned tail', async () => {
     const ctx = await setup()
     try {
-      const res = await runIdempotent(ctx, 'fable51.hypothesis-pruning', {
+      const res = await runIdempotent(ctx, 'fable51_hypothesis-pruning', {
         hypotheses: [
           { id: 'h3', score: 1 },
           { id: 'h1', score: 5 },
@@ -218,10 +218,10 @@ describe('spec 32 — hypothesis-pruning', () => {
   it('keeps every hypothesis when k exceeds the candidate count', async () => {
     const ctx = await setup()
     try {
-      const res = await run(ctx, 'fable51.hypothesis-pruning', { hypotheses: [{ id: 'a', score: 2 }], k: 5 })
+      const res = await run(ctx, 'fable51_hypothesis-pruning', { hypotheses: [{ id: 'a', score: 2 }], k: 5 })
       assert.deepEqual(res.output.kept, [{ id: 'a', score: 2 }])
       assert.deepEqual(res.output.pruned, [])
-      await expectError(ctx, 'fable51.hypothesis-pruning', { hypotheses: [{ id: 'a', score: 2 }], k: -1 })
+      await expectError(ctx, 'fable51_hypothesis-pruning', { hypotheses: [{ id: 'a', score: 2 }], k: -1 })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -232,12 +232,12 @@ describe('spec 35 — chain-vs-tree', () => {
   it('selects a chain while the branch factor is at or below one and a tree above it', async () => {
     const ctx = await setup()
     try {
-      const chain = await runIdempotent(ctx, 'fable51.chain-vs-tree', { branchFactor: 1 })
+      const chain = await runIdempotent(ctx, 'fable51_chain-vs-tree', { branchFactor: 1 })
       assert.equal(chain.spec, '35')
       assert.equal(chain.output.topology, 'chain')
-      const linear = await run(ctx, 'fable51.chain-vs-tree', { branchFactor: 0 })
+      const linear = await run(ctx, 'fable51_chain-vs-tree', { branchFactor: 0 })
       assert.equal(linear.output.topology, 'chain')
-      const tree = await run(ctx, 'fable51.chain-vs-tree', { branchFactor: 2 })
+      const tree = await run(ctx, 'fable51_chain-vs-tree', { branchFactor: 2 })
       assert.equal(tree.output.topology, 'tree')
       assert.equal(tree.output.branchFactor, 2)
     } finally {
@@ -250,14 +250,14 @@ describe('spec 37 — parallel-tool-feed', () => {
   it('batches the independent calls into one feed', async () => {
     const ctx = await setup()
     try {
-      const res = await runIdempotent(ctx, 'fable51.parallel-tool-feed', { calls: ['search', 'fetch', 'read'] })
+      const res = await runIdempotent(ctx, 'fable51_parallel-tool-feed', { calls: ['search', 'fetch', 'read'] })
       assert.equal(res.spec, '37')
       assert.equal(res.output.batched, 3)
       assert.equal(res.output.independent, true)
-      const empty = await run(ctx, 'fable51.parallel-tool-feed', { calls: [] })
+      const empty = await run(ctx, 'fable51_parallel-tool-feed', { calls: [] })
       assert.equal(empty.output.batched, 0)
       assert.equal(empty.output.independent, true)
-      await expectError(ctx, 'fable51.parallel-tool-feed', { calls: ['ok', 7] })
+      await expectError(ctx, 'fable51_parallel-tool-feed', { calls: ['ok', 7] })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -268,7 +268,7 @@ describe('spec 38 — reasoning-checkpoint', () => {
   it('snapshots the pass state and reports its id and content hash', async () => {
     const ctx = await setup()
     try {
-      const res = await runIdempotent(ctx, 'fable51.reasoning-checkpoint', { passId: 'p7', state: { turn: 2, note: 'boundary' } })
+      const res = await runIdempotent(ctx, 'fable51_reasoning-checkpoint', { passId: 'p7', state: { turn: 2, note: 'boundary' } })
       assert.equal(res.spec, '38')
       assert.equal(res.output.snapshotId, 'p7')
       const snapshot = ctx.fable51.snapshots.get('p7')
@@ -279,8 +279,8 @@ describe('spec 38 — reasoning-checkpoint', () => {
       assert.deepEqual(ctx.fable51.snapshots.ids(), ['p7'], 'the snapshot store is keyed by id, so a repeat checkpoint replaces rather than appends')
       // defect guard: a cache hit would replay p7 and leave the other pass newest,
       // because the write never ran
-      await run(ctx, 'fable51.reasoning-checkpoint', { passId: 'p8', state: { turn: 3 } })
-      const rewritten = await run(ctx, 'fable51.reasoning-checkpoint', { passId: 'p7', state: { turn: 2, note: 'boundary' } })
+      await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p8', state: { turn: 3 } })
+      const rewritten = await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p7', state: { turn: 2, note: 'boundary' } })
       assert.equal(rewritten.rerun, false, 'the repeated checkpoint must re-execute, not replay')
       assert.equal(ctx.fable51.snapshots.latest()?.id, 'p7', 'the repeated checkpoint must really write p7 again — a replayed answer would leave p8 newest')
     } finally {
@@ -291,8 +291,8 @@ describe('spec 38 — reasoning-checkpoint', () => {
   it('rejects a non-object state and an empty pass id', async () => {
     const ctx = await setup()
     try {
-      await expectError(ctx, 'fable51.reasoning-checkpoint', { passId: 'p7', state: 'not-an-object' })
-      await expectError(ctx, 'fable51.reasoning-checkpoint', { passId: '', state: {} })
+      await expectError(ctx, 'fable51_reasoning-checkpoint', { passId: 'p7', state: 'not-an-object' })
+      await expectError(ctx, 'fable51_reasoning-checkpoint', { passId: '', state: {} })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -303,7 +303,7 @@ describe('spec 39 — contradiction-detection', () => {
   it('reports only the pairs whose values differ', async () => {
     const ctx = await setup()
     try {
-      const res = await runIdempotent(ctx, 'fable51.contradiction-detection', {
+      const res = await runIdempotent(ctx, 'fable51_contradiction-detection', {
         claims: [
           { id: 'a', value: 'yes' },
           { id: 'b', value: 'no' },
@@ -315,14 +315,14 @@ describe('spec 39 — contradiction-detection', () => {
         ['a', 'b'],
         ['b', 'c'],
       ])
-      const agree = await run(ctx, 'fable51.contradiction-detection', {
+      const agree = await run(ctx, 'fable51_contradiction-detection', {
         claims: [
           { id: 'a', value: { v: 1 } },
           { id: 'b', value: { v: 1 } },
         ],
       })
       assert.deepEqual(agree.output.contradictions, [])
-      const single = await run(ctx, 'fable51.contradiction-detection', { claims: [{ id: 'a', value: 1 }] })
+      const single = await run(ctx, 'fable51_contradiction-detection', { claims: [{ id: 'a', value: 1 }] })
       assert.deepEqual(single.output.contradictions, [])
     } finally {
       await ctx.fiber.dispose()
@@ -334,7 +334,7 @@ describe('spec 40 — confidence-scoring', () => {
   it('merges by summed weight, not by majority', async () => {
     const ctx = await setup()
     try {
-      const res = await runIdempotent(ctx, 'fable51.confidence-scoring', {
+      const res = await runIdempotent(ctx, 'fable51_confidence-scoring', {
         votes: [
           { weight: 6, value: 'a' },
           { weight: 1, value: 'b' },
@@ -355,17 +355,17 @@ describe('spec 40 — confidence-scoring', () => {
   it('breaks a tie by first appearance and returns null for an empty vote set', async () => {
     const ctx = await setup()
     try {
-      const tie = await run(ctx, 'fable51.confidence-scoring', {
+      const tie = await run(ctx, 'fable51_confidence-scoring', {
         votes: [
           { weight: 2, value: 'x' },
           { weight: 2, value: 'y' },
         ],
       })
       assert.equal(tie.output.winner, 'x')
-      const none = await run(ctx, 'fable51.confidence-scoring', { votes: [] })
+      const none = await run(ctx, 'fable51_confidence-scoring', { votes: [] })
       assert.equal(none.output.winner, null)
       assert.deepEqual(none.output.totals, [])
-      await expectError(ctx, 'fable51.confidence-scoring', { votes: [{ weight: 'heavy', value: 'a' }] })
+      await expectError(ctx, 'fable51_confidence-scoring', { votes: [{ weight: 'heavy', value: 'a' }] })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -376,18 +376,18 @@ describe('spec 41 — speculative-execution', () => {
   it('runs only while the reuse probability beats the wasted-work cost', async () => {
     const ctx = await setup()
     try {
-      const res = await runIdempotent(ctx, 'fable51.speculative-execution', { reuseProb: 0.5, cost: 1000 })
+      const res = await runIdempotent(ctx, 'fable51_speculative-execution', { reuseProb: 0.5, cost: 1000 })
       assert.equal(res.spec, '41')
       assert.equal(res.output.run, true)
       assert.equal(res.output.waste, false)
-      const miss = await run(ctx, 'fable51.speculative-execution', { reuseProb: 0.0001, cost: 1000 })
+      const miss = await run(ctx, 'fable51_speculative-execution', { reuseProb: 0.0001, cost: 1000 })
       assert.equal(miss.output.run, false)
       assert.equal(miss.output.waste, true)
-      const boundary = await run(ctx, 'fable51.speculative-execution', { reuseProb: 0.5, cost: 50_000 })
+      const boundary = await run(ctx, 'fable51_speculative-execution', { reuseProb: 0.5, cost: 50_000 })
       assert.equal(boundary.output.run, false, 'reuseProb must strictly exceed cost/100000')
       assert.equal(boundary.output.waste, true)
-      await expectError(ctx, 'fable51.speculative-execution', { reuseProb: 1.5, cost: 10 })
-      await expectError(ctx, 'fable51.speculative-execution', { reuseProb: 0.5, cost: -10 })
+      await expectError(ctx, 'fable51_speculative-execution', { reuseProb: 1.5, cost: 10 })
+      await expectError(ctx, 'fable51_speculative-execution', { reuseProb: 0.5, cost: -10 })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -398,14 +398,14 @@ describe('spec 42 — early-exit', () => {
   it('stops once the last n changes all fall below the threshold', async () => {
     const ctx = await setup()
     try {
-      const res = await runIdempotent(ctx, 'fable51.early-exit', { changes: [0.5, 0.01, 0.02, 0.03], threshold: 0.04, n: 3 })
+      const res = await runIdempotent(ctx, 'fable51_early-exit', { changes: [0.5, 0.01, 0.02, 0.03], threshold: 0.04, n: 3 })
       assert.equal(res.spec, '42')
       assert.equal(res.output.stop, true)
-      const diverged = await run(ctx, 'fable51.early-exit', { changes: [0.5, 0.01, 0.5, 0.03], threshold: 0.04, n: 3 })
+      const diverged = await run(ctx, 'fable51_early-exit', { changes: [0.5, 0.01, 0.5, 0.03], threshold: 0.04, n: 3 })
       assert.equal(diverged.output.stop, false)
-      const short = await run(ctx, 'fable51.early-exit', { changes: [0.01, 0.02], threshold: 0.04, n: 3 })
+      const short = await run(ctx, 'fable51_early-exit', { changes: [0.01, 0.02], threshold: 0.04, n: 3 })
       assert.equal(short.output.stop, false, 'fewer than n observed changes cannot converge')
-      await expectError(ctx, 'fable51.early-exit', { changes: [0.01], threshold: 0.04, n: 0 })
+      await expectError(ctx, 'fable51_early-exit', { changes: [0.01], threshold: 0.04, n: 0 })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -417,14 +417,14 @@ describe('spec 44 — divergence-control', () => {
     const ctx = await setup()
     try {
       const cap = ctx.fable51.config.budget.maxForkDepth
-      const res = await runIdempotent(ctx, 'fable51.divergence-control', { branches: cap + 3 })
+      const res = await runIdempotent(ctx, 'fable51_divergence-control', { branches: cap + 3 })
       assert.equal(res.spec, '44')
       assert.equal(res.output.capped, cap)
       assert.equal(res.output.exceeded, true)
-      const within = await run(ctx, 'fable51.divergence-control', { branches: cap })
+      const within = await run(ctx, 'fable51_divergence-control', { branches: cap })
       assert.equal(within.output.capped, cap)
       assert.equal(within.output.exceeded, false)
-      await expectError(ctx, 'fable51.divergence-control', { branches: 1.5 })
+      await expectError(ctx, 'fable51_divergence-control', { branches: 1.5 })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -436,18 +436,18 @@ describe('spec 45 — merge-strategy', () => {
     const ctx = await setup()
     try {
       const sets = [['a', 'b', 'c'], ['b', 'c'], ['c', 'b', 'a']]
-      const union = await runIdempotent(ctx, 'fable51.merge-strategy', { strategy: 'union', sets })
+      const union = await runIdempotent(ctx, 'fable51_merge-strategy', { strategy: 'union', sets })
       assert.equal(union.spec, '45')
       assert.deepEqual(union.output.merged, ['a', 'b', 'c'])
       assert.equal(union.output.strategy, 'union')
       assert.equal(ctx.fable51.mergesThisStage, 2, 'the repeated merge must consume the stage budget twice — a cache hit skipped recordMerge')
-      const intersection = await run(ctx, 'fable51.merge-strategy', { strategy: 'intersection', sets })
+      const intersection = await run(ctx, 'fable51_merge-strategy', { strategy: 'intersection', sets })
       assert.deepEqual(intersection.output.merged, ['b', 'c'])
-      const weighted = await run(ctx, 'fable51.merge-strategy', { strategy: 'weighted', sets: [['a', 'b'], ['b', 'a']] })
+      const weighted = await run(ctx, 'fable51_merge-strategy', { strategy: 'weighted', sets: [['a', 'b'], ['b', 'a']] })
       assert.deepEqual(weighted.output.merged, ['a', 'b'])
-      const empty = await run(ctx, 'fable51.merge-strategy', { strategy: 'intersection', sets: [] })
+      const empty = await run(ctx, 'fable51_merge-strategy', { strategy: 'intersection', sets: [] })
       assert.deepEqual(empty.output.merged, [])
-      await expectError(ctx, 'fable51.merge-strategy', { strategy: 'majority', sets })
+      await expectError(ctx, 'fable51_merge-strategy', { strategy: 'majority', sets })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -458,19 +458,19 @@ describe('spec 46 — reasoning-rollback', () => {
   it('reverts to the latest checkpoint, or null when none exists', async () => {
     const ctx = await setup()
     try {
-      const none = await runIdempotent(ctx, 'fable51.reasoning-rollback', { passId: 'p1' })
+      const none = await runIdempotent(ctx, 'fable51_reasoning-rollback', { passId: 'p1' })
       assert.equal(none.spec, '46')
       assert.equal(none.output.revertedTo, null)
-      await run(ctx, 'fable51.reasoning-checkpoint', { passId: 'p2', state: { turn: 1 } })
+      await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p2', state: { turn: 1 } })
       // A distinct passId is used per query: the bundle cache (spec 19) replays
       // a recorded answer for identical arguments, which is the intended
       // no-double-write behaviour, not a stale read of the snapshot index.
-      const reverted = await run(ctx, 'fable51.reasoning-rollback', { passId: 'rollback-after-p2' })
+      const reverted = await run(ctx, 'fable51_reasoning-rollback', { passId: 'rollback-after-p2' })
       assert.equal(reverted.output.revertedTo, 'p2')
-      await run(ctx, 'fable51.reasoning-checkpoint', { passId: 'p3', state: { turn: 2 } })
-      const newest = await run(ctx, 'fable51.reasoning-rollback', { passId: 'rollback-after-p3' })
+      await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p3', state: { turn: 2 } })
+      const newest = await run(ctx, 'fable51_reasoning-rollback', { passId: 'rollback-after-p3' })
       assert.equal(newest.output.revertedTo, 'p3')
-      await expectError(ctx, 'fable51.reasoning-rollback', { passId: '' })
+      await expectError(ctx, 'fable51_reasoning-rollback', { passId: '' })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -481,7 +481,7 @@ describe('spec 49 — reasoning-trace-format', () => {
   it('emits the trace record with input/output fingerprints and the weighted score', async () => {
     const ctx = await setup()
     try {
-      const res = await runIdempotent(ctx, 'fable51.reasoning-trace-format', {
+      const res = await runIdempotent(ctx, 'fable51_reasoning-trace-format', {
         id: 'pass-1',
         input: { q: 'why' },
         output: { a: 'because' },
@@ -495,7 +495,7 @@ describe('spec 49 — reasoning-trace-format', () => {
       assert.deepEqual(res.output.deps, ['root'])
       assert.equal(res.output.verdict, 'contributed')
       assert.deepEqual(res.output.score, { evidence: 1, coherence: 1, coverage: 1, contradiction: 0, weighted: 3 })
-      const discarded = await run(ctx, 'fable51.reasoning-trace-format', {
+      const discarded = await run(ctx, 'fable51_reasoning-trace-format', {
         id: 'pass-2',
         input: 1,
         output: 2,
@@ -504,8 +504,8 @@ describe('spec 49 — reasoning-trace-format', () => {
       })
       assert.equal(discarded.output.verdict, 'discarded')
       assert.deepEqual(discarded.output.deps, [])
-      await expectError(ctx, 'fable51.reasoning-trace-format', { id: 'p', input: 1, output: 2, deps: [], verdict: 'maybe' })
-      await expectError(ctx, 'fable51.reasoning-trace-format', { id: 'p', output: 2, deps: [], verdict: 'neutral' })
+      await expectError(ctx, 'fable51_reasoning-trace-format', { id: 'p', input: 1, output: 2, deps: [], verdict: 'maybe' })
+      await expectError(ctx, 'fable51_reasoning-trace-format', { id: 'p', output: 2, deps: [], verdict: 'neutral' })
     } finally {
       await ctx.fiber.dispose()
     }

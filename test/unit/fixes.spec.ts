@@ -28,7 +28,7 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>) {
   return ctx.tools.execute({
     signal: new AbortController().signal,
     callId: ToolCallId('fix'),
-    name: `fable51.${name}`,
+    name: `fable51_${name}`,
     arguments: args,
   })
 }
@@ -224,7 +224,7 @@ describe('GAP 3 — spec 58 convergence: small deltas for N turns AND no new evi
       await drive()
       const stable = ctx.fable51.converged()
       assert.equal(stable.converged, true, 'N stable turns with no new evidence converge')
-      ctx.emit('tools/result', { name: 'fable51.context-management', arguments: {} } as never, { content: [{ type: 'text', text: 'fresh artifact' }], isError: false } as never)
+      ctx.emit('tools/result', { name: 'fable51_context-management', arguments: {} } as never, { content: [{ type: 'text', text: 'fresh artifact' }], isError: false } as never)
       assert.equal(ctx.fable51.converged().converged, false, 'new evidence blocks convergence')
     } finally {
       await ctx.fiber.dispose()
@@ -295,7 +295,7 @@ describe('GAP 6 — spec 3 tool-call-batching partitions by dependency', () => {
           { name: 'join', deps: ['read-a'] },
         ],
       })
-      assert.equal(res.isError, false, 'fable51.tool-call-batching must exist')
+      assert.equal(res.isError, false, 'fable51_tool-call-batching must exist')
       const out = (res as unknown as { value: { output: { batches: string[][]; serialized: string[] } } }).value.output
       assert.deepEqual(out.batches, [['read-a', 'read-b'], ['join']])
       assert.deepEqual(out.serialized, ['join'])

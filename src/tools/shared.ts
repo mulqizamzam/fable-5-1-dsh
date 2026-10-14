@@ -30,7 +30,7 @@ export interface ToolResult<T = unknown> {
 export interface ToolSpec<T = unknown> {
   /** Spec id(s) this tool enforces, e.g. '1' or '4.1'. */
   readonly spec: string
-  /** Tool name without the fable51. namespace prefix. */
+  /** Tool name without the fable51_ namespace prefix. */
   readonly name: string
   readonly description: string
   readonly parameters: Record<string, unknown>
@@ -46,7 +46,9 @@ export interface ToolSpec<T = unknown> {
 }
 
 export function toolName(spec: ToolSpec): string {
-  return `fable51.${spec.name}`
+  // Dotted names break OpenAI-compatible provider tool validation
+  // (^[a-zA-Z0-9_-]+$); keep the namespace with an underscore instead.
+  return `fable51_${spec.name}`
 }
 
 function renderText(value: unknown): string {

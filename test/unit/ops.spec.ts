@@ -42,8 +42,8 @@ async function setup(config: Record<string, unknown> = {}): Promise<Context> {
 }
 
 async function execute(ctx: Context, name: string, args: unknown): Promise<RunResult> {
-  const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId(randomUUID()), name: `fable51.${name}`, arguments: args })
-  assert.equal(result.isError, false, `fable51.${name} failed: ${JSON.stringify(result.content)}`)
+  const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId(randomUUID()), name: `fable51_${name}`, arguments: args })
+  assert.equal(result.isError, false, `fable51_${name} failed: ${JSON.stringify(result.content)}`)
   return result as unknown as RunResult
 }
 
@@ -60,9 +60,9 @@ describe('fable51 ops tools', () => {
     const ctx = await setup()
     try {
       const names = ctx.tools.schemas().map((s) => s.name)
-      for (const name of names) assert.match(name, /^fable51\./, `tool ${name} must stay namespaced`)
+      for (const name of names) assert.match(name, /^fable51_/, `tool ${name} must stay namespaced`)
       for (const expected of ['timeboxing', 'conflict-resolution', 'observability', 'determinism', 'sandbox-boundaries', 'dependency-pinning', 'postmortem-format']) {
-        assert.ok(names.includes(`fable51.${expected}`), `expected fable51.${expected} registered`)
+        assert.ok(names.includes(`fable51_${expected}`), `expected fable51_${expected} registered`)
       }
     } finally {
       await ctx.fiber.dispose()

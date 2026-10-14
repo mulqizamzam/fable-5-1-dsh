@@ -40,9 +40,9 @@ describe('Gate 1 — activation', () => {
     const ctx = await setup()
     try {
       const names = ctx.tools.schemas().map((s) => s.name)
-      assert.ok(names.includes('fable51.context-management'), `expected fable51.context-management in ${names.join(',')}`)
+      assert.ok(names.includes('fable51_context-management'), `expected fable51_context-management in ${names.join(',')}`)
       for (const name of names) {
-        assert.match(name, /^fable51\./, `tool ${name} must stay in the fable51 namespace`)
+        assert.match(name, /^fable51_/, `tool ${name} must stay in the fable51 namespace`)
       }
     } finally {
       await ctx.fiber.dispose()
@@ -52,7 +52,7 @@ describe('Gate 1 — activation', () => {
   it('a bundle tool executes and returns the typed envelope; rerun is idempotent', async () => {
     const ctx = await setup()
     try {
-      const exec = { signal: new AbortController().signal, callId: ToolCallId('c1'), name: 'fable51.context-management', arguments: { fillRatio: 0.95 } }
+      const exec = { signal: new AbortController().signal, callId: ToolCallId('c1'), name: 'fable51_context-management', arguments: { fillRatio: 0.95 } }
       const first = await ctx.tools.execute(exec)
       assert.equal(first.isError, false, `tool failed: ${JSON.stringify(first.content)}`)
       const value = first.value as { spec: string; output: { action: string }; rerun: boolean }
@@ -85,7 +85,7 @@ describe('Gate 3 — hooks fire', () => {
     const ctx = await setup()
     try {
       const before = ctx.fable51.worklog.length
-      ctx.emit('tools/result', { name: 'fable51.context-management', arguments: { fillRatio: 0.5 } } as never, { content: [{ type: 'text', text: 'ok' }], isError: false } as never)
+      ctx.emit('tools/result', { name: 'fable51_context-management', arguments: { fillRatio: 0.5 } } as never, { content: [{ type: 'text', text: 'ok' }], isError: false } as never)
       assert.ok(ctx.fable51.worklog.length > before, 'tools/result observer must append a worklog line')
     } finally {
       await ctx.fiber.dispose()

@@ -41,7 +41,7 @@ async function raw(ctx: Context, name: string, args: Record<string, unknown>): P
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: ToolCallId(`call-${name}`),
-    name: `fable51.${name}`,
+    name: `fable51_${name}`,
     arguments: args,
   })
   return { isError: result.isError, value: result.value }
@@ -49,7 +49,7 @@ async function raw(ctx: Context, name: string, args: Record<string, unknown>): P
 
 async function call(ctx: Context, name: string, args: Record<string, unknown>): Promise<Envelope> {
   const result = await raw(ctx, name, args)
-  assert.equal(result.isError, false, `tool fable51.${name} threw: ${JSON.stringify(result.value)}`)
+  assert.equal(result.isError, false, `tool fable51_${name} threw: ${JSON.stringify(result.value)}`)
   return result.value as Envelope
 }
 

@@ -39,10 +39,10 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>): 
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: ToolCallId('c1'),
-    name: `fable51.${name}`,
+    name: `fable51_${name}`,
     arguments: args,
   })
-  assert.equal(result.isError, false, `fable51.${name} failed: ${JSON.stringify(result.content)}`)
+  assert.equal(result.isError, false, `fable51_${name} failed: ${JSON.stringify(result.content)}`)
   return (result as unknown as { value: Envelope }).value
 }
 
@@ -61,10 +61,10 @@ describe('escalation group — namespace', () => {
         'pass-retry-policy',
       ]
       for (const name of expected) {
-        assert.ok(names.includes(`fable51.${name}`), `expected fable51.${name} in ${names.join(',')}`)
+        assert.ok(names.includes(`fable51_${name}`), `expected fable51_${name} in ${names.join(',')}`)
       }
       for (const name of names) {
-        assert.match(name, /^fable51\./, `tool ${name} must stay in the fable51 namespace`)
+        assert.match(name, /^fable51_/, `tool ${name} must stay in the fable51 namespace`)
       }
     } finally {
       await ctx.fiber.dispose()

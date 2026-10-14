@@ -43,7 +43,7 @@ describe('reasoning-flow tools', () => {
         'reasoning-replay', 'reasoning-audit', 'reasoning-topology', 'adaptive-branching', 'reasoning-heatmap',
         'cross-pass-consistency', 'reasoning-fingerprint', 'pass-scheduling', 'reasoning-window',
         'merge-conflict-resolution', 'reasoning-lineage', 'reasoning-backpressure']) {
-        assert.ok(names.includes(`fable51.${expected}`), `missing fable51.${expected}`)
+        assert.ok(names.includes(`fable51_${expected}`), `missing fable51_${expected}`)
       }
     } finally {
       await ctx.fiber.dispose()
@@ -53,11 +53,11 @@ describe('reasoning-flow tools', () => {
   it('51 orders verify before critical before explore', async () => {
     const ctx = await setup()
     try {
-      const first = await call(ctx, 'fable51.reasoning-priority', { tasks: [{ id: 'e1', kind: 'explore' }, { id: 'v1', kind: 'verify' }, { id: 'c1', kind: 'critical' }] })
+      const first = await call(ctx, 'fable51_reasoning-priority', { tasks: [{ id: 'e1', kind: 'explore' }, { id: 'v1', kind: 'verify' }, { id: 'c1', kind: 'critical' }] })
       assert.equal(first.spec, '51')
       assert.equal(first.rerun, false)
       assert.deepEqual(first.output.order, ['v1', 'c1', 'e1'])
-      const again = await call(ctx, 'fable51.reasoning-priority', { tasks: [{ id: 'e1', kind: 'explore' }, { id: 'v1', kind: 'verify' }, { id: 'c1', kind: 'critical' }] })
+      const again = await call(ctx, 'fable51_reasoning-priority', { tasks: [{ id: 'e1', kind: 'explore' }, { id: 'v1', kind: 'verify' }, { id: 'c1', kind: 'critical' }] })
       assert.equal(again.rerun, true)
     } finally {
       await ctx.fiber.dispose()
@@ -67,7 +67,7 @@ describe('reasoning-flow tools', () => {
   it('53 separates duplicates by exact content', async () => {
     const ctx = await setup()
     try {
-      const out = await call(ctx, 'fable51.reasoning-dedup', { items: ['a', 'b', 'a'] })
+      const out = await call(ctx, 'fable51_reasoning-dedup', { items: ['a', 'b', 'a'] })
       assert.deepEqual(out.output.unique, ['a', 'b'])
       assert.deepEqual(out.output.duplicates, ['a'])
     } finally {
@@ -78,9 +78,9 @@ describe('reasoning-flow tools', () => {
   it('54 computes the weighted hypothesis score', async () => {
     const ctx = await setup()
     try {
-      const out = await call(ctx, 'fable51.hypothesis-scoring', { evidence: 5, contradiction: 2, coverage: 3 })
+      const out = await call(ctx, 'fable51_hypothesis-scoring', { evidence: 5, contradiction: 2, coverage: 3 })
       assert.equal(out.output.score, 6)
-      const weighted = await call(ctx, 'fable51.hypothesis-scoring', { evidence: 5, contradiction: 2, coverage: 3, weights: [2, 1, 0] })
+      const weighted = await call(ctx, 'fable51_hypothesis-scoring', { evidence: 5, contradiction: 2, coverage: 3, weights: [2, 1, 0] })
       assert.equal(weighted.output.score, 8)
     } finally {
       await ctx.fiber.dispose()
@@ -90,7 +90,7 @@ describe('reasoning-flow tools', () => {
   it('56 never fails the pipeline', async () => {
     const ctx = await setup()
     try {
-      const out = await call(ctx, 'fable51.failure-isolation', { failedPass: 'p1', pipelineSize: 4 })
+      const out = await call(ctx, 'fable51_failure-isolation', { failedPass: 'p1', pipelineSize: 4 })
       assert.equal(out.output.pipelineFailed, false)
       assert.equal(out.output.isolated, 'p1')
     } finally {
@@ -101,9 +101,9 @@ describe('reasoning-flow tools', () => {
   it('57 matches only on the exact trace hash', async () => {
     const ctx = await setup()
     try {
-      const bad = await call(ctx, 'fable51.reasoning-replay', { traceHash: 'sha256:nope', actual: { a: 1 } })
+      const bad = await call(ctx, 'fable51_reasoning-replay', { traceHash: 'sha256:nope', actual: { a: 1 } })
       assert.equal(bad.output.match, false)
-      const good = await call(ctx, 'fable51.reasoning-replay', { traceHash: bad.output.actualHash, actual: { a: 1 } })
+      const good = await call(ctx, 'fable51_reasoning-replay', { traceHash: bad.output.actualHash, actual: { a: 1 } })
       assert.equal(good.output.match, true)
     } finally {
       await ctx.fiber.dispose()
@@ -113,11 +113,11 @@ describe('reasoning-flow tools', () => {
   it('59 classifies by weighted score', async () => {
     const ctx = await setup()
     try {
-      const contributed = await call(ctx, 'fable51.reasoning-audit', { evidence: 2, coherence: 1, coverage: 1, contradiction: 0 })
+      const contributed = await call(ctx, 'fable51_reasoning-audit', { evidence: 2, coherence: 1, coverage: 1, contradiction: 0 })
       assert.equal(contributed.output.verdict, 'contributed')
-      const discarded = await call(ctx, 'fable51.reasoning-audit', { weighted: -3 })
+      const discarded = await call(ctx, 'fable51_reasoning-audit', { weighted: -3 })
       assert.equal(discarded.output.verdict, 'discarded')
-      const neutral = await call(ctx, 'fable51.reasoning-audit', { weighted: 0 })
+      const neutral = await call(ctx, 'fable51_reasoning-audit', { weighted: 0 })
       assert.equal(neutral.output.verdict, 'neutral')
     } finally {
       await ctx.fiber.dispose()
@@ -127,10 +127,10 @@ describe('reasoning-flow tools', () => {
   it('61 maps task shapes to topologies', async () => {
     const ctx = await setup()
     try {
-      assert.equal((await call(ctx, 'fable51.reasoning-topology', { taskShape: 'fan-out' })).output.topology, 'star')
-      assert.equal((await call(ctx, 'fable51.reasoning-topology', { taskShape: 'linear' })).output.topology, 'chain')
-      assert.equal((await call(ctx, 'fable51.reasoning-topology', { taskShape: 'all-to-all' })).output.topology, 'mesh')
-      assert.equal((await call(ctx, 'fable51.reasoning-topology', { taskShape: 'cyclic' })).output.topology, 'ring')
+      assert.equal((await call(ctx, 'fable51_reasoning-topology', { taskShape: 'fan-out' })).output.topology, 'star')
+      assert.equal((await call(ctx, 'fable51_reasoning-topology', { taskShape: 'linear' })).output.topology, 'chain')
+      assert.equal((await call(ctx, 'fable51_reasoning-topology', { taskShape: 'all-to-all' })).output.topology, 'mesh')
+      assert.equal((await call(ctx, 'fable51_reasoning-topology', { taskShape: 'cyclic' })).output.topology, 'ring')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -139,9 +139,9 @@ describe('reasoning-flow tools', () => {
   it('62 branches proportionally to ambiguity within the depth budget', async () => {
     const ctx = await setup()
     try {
-      const none = await call(ctx, 'fable51.adaptive-branching', { ambiguity: 0 })
+      const none = await call(ctx, 'fable51_adaptive-branching', { ambiguity: 0 })
       assert.equal(none.output.branches, 0)
-      const full = await call(ctx, 'fable51.adaptive-branching', { ambiguity: 1 })
+      const full = await call(ctx, 'fable51_adaptive-branching', { ambiguity: 1 })
       assert.equal(full.output.branches, ctx.fable51.config.budget.maxForkDepth)
     } finally {
       await ctx.fiber.dispose()
@@ -151,7 +151,7 @@ describe('reasoning-flow tools', () => {
   it('63 ranks by contribution and flags waste', async () => {
     const ctx = await setup()
     try {
-      const out = await call(ctx, 'fable51.reasoning-heatmap', {
+      const out = await call(ctx, 'fable51_reasoning-heatmap', {
         passes: [
           { id: 'a', tokens: 1000, contribution: 1 },
           { id: 'b', tokens: 10, contribution: 100 },
@@ -169,7 +169,7 @@ describe('reasoning-flow tools', () => {
   it('64 flags only facts whose values differ', async () => {
     const ctx = await setup()
     try {
-      const out = await call(ctx, 'fable51.cross-pass-consistency', {
+      const out = await call(ctx, 'fable51_cross-pass-consistency', {
         facts: [
           { fact: 'same', values: ['x', 'x'] },
           { fact: 'drifted', values: ['x', 'y'] },
@@ -184,8 +184,8 @@ describe('reasoning-flow tools', () => {
   it('65 fingerprints canonically', async () => {
     const ctx = await setup()
     try {
-      const a = await call(ctx, 'fable51.reasoning-fingerprint', { content: { a: 1, b: 2 } })
-      const b = await call(ctx, 'fable51.reasoning-fingerprint', { content: { b: 2, a: 1 } })
+      const a = await call(ctx, 'fable51_reasoning-fingerprint', { content: { a: 1, b: 2 } })
+      const b = await call(ctx, 'fable51_reasoning-fingerprint', { content: { b: 2, a: 1 } })
       assert.equal(a.output.fingerprint, b.output.fingerprint)
     } finally {
       await ctx.fiber.dispose()
@@ -195,11 +195,11 @@ describe('reasoning-flow tools', () => {
   it('66 schedules by the declared policy', async () => {
     const ctx = await setup()
     try {
-      const fifo = await call(ctx, 'fable51.pass-scheduling', { order: 'FIFO', passes: [{ id: 'b' }, { id: 'a' }] })
+      const fifo = await call(ctx, 'fable51_pass-scheduling', { order: 'FIFO', passes: [{ id: 'b' }, { id: 'a' }] })
       assert.deepEqual(fifo.output.scheduled, ['b', 'a'])
-      const priority = await call(ctx, 'fable51.pass-scheduling', { order: 'priority', passes: [{ id: 'b', priority: 1 }, { id: 'a', priority: 9 }] })
+      const priority = await call(ctx, 'fable51_pass-scheduling', { order: 'priority', passes: [{ id: 'b', priority: 1 }, { id: 'a', priority: 9 }] })
       assert.deepEqual(priority.output.scheduled, ['a', 'b'])
-      const sjf = await call(ctx, 'fable51.pass-scheduling', { order: 'SJF', passes: [{ id: 'b', size: 1 }, { id: 'a', size: 9 }] })
+      const sjf = await call(ctx, 'fable51_pass-scheduling', { order: 'SJF', passes: [{ id: 'b', size: 1 }, { id: 'a', size: 9 }] })
       assert.deepEqual(sjf.output.scheduled, ['b', 'a'])
     } finally {
       await ctx.fiber.dispose()
@@ -209,9 +209,9 @@ describe('reasoning-flow tools', () => {
   it('67 bounds the pass window', async () => {
     const ctx = await setup()
     try {
-      const ok = await call(ctx, 'fable51.reasoning-window', { turns: 5, tokens: 1000, toolCalls: 3 })
+      const ok = await call(ctx, 'fable51_reasoning-window', { turns: 5, tokens: 1000, toolCalls: 3 })
       assert.equal(ok.output.withinBounds, true)
-      const over = await call(ctx, 'fable51.reasoning-window', { turns: 11, tokens: 1, toolCalls: 1 })
+      const over = await call(ctx, 'fable51_reasoning-window', { turns: 11, tokens: 1, toolCalls: 1 })
       assert.equal(over.output.withinBounds, false)
     } finally {
       await ctx.fiber.dispose()
@@ -221,9 +221,9 @@ describe('reasoning-flow tools', () => {
   it('68 escalates merge conflicts by severity', async () => {
     const ctx = await setup()
     try {
-      assert.equal((await call(ctx, 'fable51.merge-conflict-resolution', { conflictScore: 0.1 })).output.strategy, 'vote')
-      assert.equal((await call(ctx, 'fable51.merge-conflict-resolution', { conflictScore: 0.6 })).output.strategy, 'weight')
-      assert.equal((await call(ctx, 'fable51.merge-conflict-resolution', { conflictScore: 0.95 })).output.strategy, 'escalate')
+      assert.equal((await call(ctx, 'fable51_merge-conflict-resolution', { conflictScore: 0.1 })).output.strategy, 'vote')
+      assert.equal((await call(ctx, 'fable51_merge-conflict-resolution', { conflictScore: 0.6 })).output.strategy, 'weight')
+      assert.equal((await call(ctx, 'fable51_merge-conflict-resolution', { conflictScore: 0.95 })).output.strategy, 'escalate')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -232,11 +232,11 @@ describe('reasoning-flow tools', () => {
   it('69 records lineage edges and answers ancestors; roots need no parent', async () => {
     const ctx = await setup()
     try {
-      const root = await call(ctx, 'fable51.reasoning-lineage', { passId: 'seed' })
+      const root = await call(ctx, 'fable51_reasoning-lineage', { passId: 'seed' })
       assert.equal(root.output.recorded, true)
-      const mid = await call(ctx, 'fable51.reasoning-lineage', { passId: 'root', parentId: 'seed' })
+      const mid = await call(ctx, 'fable51_reasoning-lineage', { passId: 'root', parentId: 'seed' })
       assert.deepEqual(mid.output.ancestors, ['seed'])
-      const child = await call(ctx, 'fable51.reasoning-lineage', { passId: 'child', parentId: 'root' })
+      const child = await call(ctx, 'fable51_reasoning-lineage', { passId: 'child', parentId: 'root' })
       assert.deepEqual(child.output.ancestors, ['root', 'seed'])
     } finally {
       await ctx.fiber.dispose()
@@ -247,8 +247,8 @@ describe('reasoning-flow tools', () => {
     const ctx = await setup()
     try {
       const threshold = ctx.fable51.config.reasoning.maxConcurrentPasses
-      assert.equal((await call(ctx, 'fable51.reasoning-backpressure', { queueDepth: 1 })).output.throttle, false)
-      assert.equal((await call(ctx, 'fable51.reasoning-backpressure', { queueDepth: threshold + 1 })).output.throttle, true)
+      assert.equal((await call(ctx, 'fable51_reasoning-backpressure', { queueDepth: 1 })).output.throttle, false)
+      assert.equal((await call(ctx, 'fable51_reasoning-backpressure', { queueDepth: threshold + 1 })).output.throttle, true)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -257,7 +257,7 @@ describe('reasoning-flow tools', () => {
   it('rejects out-of-contract arguments loudly', async () => {
     const ctx = await setup()
     try {
-      const bad = await execute(ctx, 'fable51.reasoning-priority', { tasks: 'nope' })
+      const bad = await execute(ctx, 'fable51_reasoning-priority', { tasks: 'nope' })
       // defect guard: a malformed argument is a tool-level answer, never a throw the host reports as isError
       assert.equal(bad.isError, false, 'a malformed argument must answer, not throw')
       const rejected = bad.value as unknown as { ok: boolean; verdict: string; output: Record<string, unknown>; unverified: string[] }

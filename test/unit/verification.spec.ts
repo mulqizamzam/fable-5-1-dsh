@@ -40,10 +40,10 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>): 
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
     callId: ToolCallId('c1'),
-    name: `fable51.${name}`,
+    name: `fable51_${name}`,
     arguments: args,
   })
-  assert.equal(result.isError, false, `fable51.${name} failed: ${JSON.stringify(result.content)}`)
+  assert.equal(result.isError, false, `fable51_${name} failed: ${JSON.stringify(result.content)}`)
   return (result as { value: unknown }).value as Envelope
 }
 
@@ -53,19 +53,19 @@ describe('verification tools — registry surface', () => {
     try {
       const names = ctx.tools.schemas().map((s) => s.name)
       for (const expected of [
-        'fable51.verification-gates',
-        'fable51.research-provenance',
-        'fable51.anti-introspection',
-        'fable51.cold-verifier-isolation',
-        'fable51.idempotency',
-        'fable51.verifier-forking',
-        'fable51.chain-of-verification',
-        'fable51.independent-replication',
-        'fable51.speculative-verify',
+        'fable51_verification-gates',
+        'fable51_research-provenance',
+        'fable51_anti-introspection',
+        'fable51_cold-verifier-isolation',
+        'fable51_idempotency',
+        'fable51_verifier-forking',
+        'fable51_chain-of-verification',
+        'fable51_independent-replication',
+        'fable51_speculative-verify',
       ]) {
         assert.ok(names.includes(expected), `missing ${expected} in ${names.join(',')}`)
       }
-      for (const name of names) assert.match(name, /^fable51\./, `tool ${name} must stay in the fable51 namespace`)
+      for (const name of names) assert.match(name, /^fable51_/, `tool ${name} must stay in the fable51 namespace`)
     } finally {
       await ctx.fiber.dispose()
     }
