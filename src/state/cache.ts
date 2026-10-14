@@ -30,6 +30,9 @@ export class ReasonCache {
   hits = 0
   misses = 0
 
+  /** Mirrors CACHE_CAP in policy-service.ts, which passes it explicitly. */
+  constructor(private readonly max = 2000) {}
+
   key(input: unknown, specId: string, policyHash: string): string {
     return fingerprint({ input, specId, policyHash })
   }
@@ -43,7 +46,15 @@ export class ReasonCache {
 
   set(key: string, output: unknown, at = Date.now()): CacheEntry {
     const entry: CacheEntry = { key, output, at }
+    // Re-insert moves the key to the newest slot, so a hot key is not evicted by a stale position.
+    this.store.delete(key)
     this.store.set(key, entry)
+    // FIFO eviction: entries hold full outputs, so a long-lived host must not retain all of them.
+    while (this.store.size > this.max) {
+      const oldest = this.store.keys().next()
+      if (oldest.done === true) break
+      this.store.delete(oldest.value)
+    }
     return entry
   }
 

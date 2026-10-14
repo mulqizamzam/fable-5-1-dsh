@@ -81,17 +81,19 @@ describe('PassLineage (specs 69, 87, 94)', () => {
     assert.equal(lineage.size(), 3)
   })
 
-  it('prune drops ancestry but keeps audit (spec 87) — unlike gc, no chain protection', () => {
+  it('prune keeps the ancestry of a live pass and honours audit protection (spec 87)', () => {
     const lineage = new PassLineage()
     lineage.record(pass('a'))
     lineage.record(pass('b', 'a'))
     lineage.record(pass('c', 'b'))
     lineage.protect('a')
     const dropped = lineage.prune(['c'])
-    assert.ok(dropped.includes('b'), 'prune drops unneeded ancestry')
+    assert.ok(!dropped.includes('b'), "a live pass's ancestor must survive: ancestors() would otherwise report a dangling id")
     assert.ok(!dropped.includes('a'), 'audit-protected survives prune')
     assert.ok(!dropped.includes('c'), 'live survives prune')
-    assert.equal(lineage.size(), 2)
+    assert.equal(lineage.size(), 3)
+    // guard: ancestors() is nearest-first, and prune must leave the whole chain resolvable (spec 87)
+    assert.deepEqual(lineage.ancestors('c'), ['b', 'a'], 'the whole chain resolves, nearest ancestor first')
   })
 
   it('classifies verdicts for the audit tool (spec 59)', () => {

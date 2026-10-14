@@ -33,7 +33,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "test": "node --import tsx/esm --test test/unit/*.spec.ts test/integration/*.spec.ts test/e2e/*.spec.ts",
     "test:unit": "node --import tsx/esm --test test/unit/*.spec.ts",
     "test:integration": "node --import tsx/esm --test test/integration/*.spec.ts",
@@ -63,6 +63,7 @@
     "@deepseek-ai/dsh-llm": "link:/home/administrator/deepseek-harness/packages/llm/llm",
     "@deepseek-ai/dsh-agent": "link:/home/administrator/deepseek-harness/packages/core/agent",
     "@deepseek-ai/dsh-session": "link:/home/administrator/deepseek-harness/packages/core/session",
+    "@deepseek-ai/dsh-system-prompt": "link:/home/administrator/deepseek-harness/packages/core/system-prompt",
     "tsx": "link:/home/administrator/deepseek-harness/node_modules/tsx",
     "typescript": "link:/home/administrator/deepseek-harness/node_modules/typescript"
   },

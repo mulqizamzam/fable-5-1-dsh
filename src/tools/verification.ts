@@ -32,6 +32,7 @@ export function verificationTools(): ToolSpec[] {
   return [
     {
       spec: '5',
+      effectful: true,
       name: 'verification-gates',
       description: 'Run a verification gate that can fail: record {gate,cmd,expected,actual,pass} where pass is actual === expected (spec 5).',
       parameters: {
@@ -258,7 +259,12 @@ export function verificationTools(): ToolSpec[] {
         },
       },
       execute(args): { verdict: string; chain: { layer: string; checks: string | null }[]; unverified: string[] } {
-        const { layers } = args as { layers: string[] }
+        const raw = asRecord(args).layers
+        // Without this the registry never checks parameters and layers.map blows up.
+        if (!Array.isArray(raw) || raw.some((layer: unknown) => typeof layer !== 'string')) {
+          throw new Error('layers must be an array of strings')
+        }
+        const layers = raw as string[]
         if (layers.length < 2) {
           return { verdict: UNVERIFIED, chain: [], unverified: ['a verification chain needs at least 2 layers'] }
         }
@@ -291,7 +297,8 @@ export function verificationTools(): ToolSpec[] {
       },
       execute(args, { service }): { replicaId: string; seed: number } {
         const { passId, input } = args as { passId: string; input: unknown }
-        const seed = service.seed() + 1
+        // A seed from service.seed() alone replicates the source run verbatim (spec 48).
+        const seed = service.seed() + Number.parseInt(fingerprint({ passId, input }).slice(7, 15), 16)
         return { replicaId: fingerprint({ passId, input, seed }), seed }
       },
     },

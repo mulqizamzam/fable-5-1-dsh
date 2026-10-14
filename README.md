@@ -2,7 +2,14 @@
 
 Fable-5.1 reasoning-orchestration bundle for DeepSeek Harness (`dsh`). One bundle
 implements all 100 fable-5-1 specs through three dsh primitives: a policy service,
-four event hooks, and namespaced tools. No spec is implemented as a stub.
+four event hooks, and namespaced tools.
+
+- 90 of the 100 specs are reachable through the `fable51.*` tool surface (one tool
+  per spec id); the other 10 exist as service methods driven by the hooks. Two spec
+  ids — `progress-reporting` (4) and `reasoning-bandwidth` (55) — have no
+  implementation in this bundle.
+- Read [What enforces and what only reports](#what-enforces-and-what-only-reports)
+  before relying on a spec as a control: several are classifiers, not gates.
 
 - Target dsh: developer preview, pinned at commit `23c78fcdd5ee0b497a77ca356608c51093c74bb9` (v0.2.0-rc.2)
 - Runtime: Cordis, TypeScript, ESM only
@@ -42,9 +49,12 @@ so activation must be verified, never assumed.
 
 ## Config
 
-The bundle fails loudly: an invalid config throws with the exact field path
-(no silent defaults, no silent fallback). Configuration is supplied via the
-bundle patch entry (`cordis.patch.yml` `config:` block) or the profile overlay.
+The bundle fails loudly: a malformed config — a non-object `config:`, an unknown
+key at any level, a wrong value type, unordered context thresholds — throws at load
+with the exact field path. There are no silent defaults and no silent fallback: a
+key you typo is rejected, not dropped. Configuration is supplied via the bundle
+patch entry (`cordis.patch.yml` `config:` block) or the profile overlay. A profile
+that was silently running on defaults will now refuse to start.
 
 | Block | Specs | Keys |
 |---|---|---|
@@ -58,6 +68,24 @@ bundle patch entry (`cordis.patch.yml` `config:` block) or the profile overlay.
 | `observability` | 24, 79 | `traceLevel`, `logFormat` |
 | `registry` | 100 | `policies[]` (id/version/owner/active/hash) |
 
+## What enforces and what only reports
+
+Most specs here classify and report; they do not block. Know which is which before
+you rely on one as a control.
+
+| Enforces | How |
+|---|---|
+| `sandbox-boundaries` (26) | An escape is logged and, when `escapeAction: 'abort'`, the call returns `ok:false` instead of a result that looks usable |
+| `human-in-the-loop` (27) | Fails closed — an omitted `irreversible`/`external`/`estimatedCost` requests approval. Still only reachable if the model calls it |
+| Hook fault isolation | A fault in `agent/pre-step` or `llm/stream` is logged and the step/stream continues; a plugin can no longer veto a turn |
+
+| Reports only | Consequence |
+|---|---|
+| `context-management` (1) | The compact/drop/spill action is classified and logged; nothing truncates or spills a message list |
+| Effort escalation (6) | `effortTier` is advanced and logged; no model parameter is changed |
+| Backpressure (71) | Reported from a caller-supplied queue depth |
+| Tool cache | Idempotent replay applies to pure computations; tools marked `effectful` always re-execute |
+
 ## Guarantees
 
 - **Surface-verified integration.** Every hook and API this bundle touches was
@@ -65,28 +93,42 @@ bundle patch entry (`cordis.patch.yml` `config:` block) or the profile overlay.
   `PreStepDecision`), `tools/result` (emit), `llm/stream` (waterfall),
   `session/event` + `session/created`/`session/disposed` (emit),
   `ctx.tools.register(definition)` → disposer. See `RECON.md` for file:line evidence.
-- **Typed, idempotent tools.** Every tool returns the standard envelope
-  (`{ok, spec, output, verdict, unverified, rerun, gates}`) and replays its
-  cached output for identical input hashes.
+- **Uniform result envelope.** Every tool returns
+  `{ok, spec, output, verdict, unverified, rerun, gates}`. `ok` is `false` for a
+  rejected argument instead of throwing out of the call. `verdict`/`unverified`
+  follow the tool's own reported status — a tool that says it could not verify
+  does not come back as `verified`.
 - **Fail-loud config** with field-path errors; **immutable policy registry**
   (change = new version); **append-only pass lineage** with GC and audit keep.
+- **Bounded state.** The worklog, gate log, cost ledger, reason cache and snapshot
+  store evict oldest-first; the per-turn stage token budget resets on `turn/start`.
 - **Encoding hygiene**: LF, UTF-8 no BOM, final newline everywhere.
 
 ## Testing
 
 ```sh
 pnpm test              # unit + integration + e2e (node:test via tsx)
-pnpm typecheck         # tsc -b
+pnpm typecheck         # tsc -b, then the test project
 pnpm build             # emit lib/
 ```
 
 The integration and e2e suites load the bundle into a real Cordis host with the
-real dsh services (`dsh-tools`, `dsh-llm`, `dsh-session`, `dsh-system-prompt`) —
-the tool registry validates every registration, so a bad schema fails the test,
-not production.
+real dsh services (`dsh-tools`, `dsh-llm`, `dsh-session`, `dsh-system-prompt`) and
+drive real event dispatches. The registry checks that a tool declares an `output`
+block and that the returned value matches the declared output schema — it does NOT
+validate input arguments, so a bad schema is caught at return time, not at
+registration time. `pnpm typecheck` covers `test/**` as well as `src/**`.
 
 ## Known limits
 
+- **State is per-host, not per-session.** One `ctx.fable51` instance serves every
+  session in the host: the worklog, ledger, cache, snapshots, lineage and the
+  scalar counters are shared. A `turn/start` from one session clears the stage
+  token budget another session was still charging against, and per-stage fork and
+  merge budgets reset for everyone at once. Isolating this needs session identity
+  plumbed through `ToolRunContext` into the tools and hooks; it is not done here.
+- **No CI and no lockfile.** `lib/` is gitignored, so the artifact a host runs is
+  whatever was built locally.
 - The full agent-loop path (LLM streaming through the bundle's hooks) was not
   executed in the authoring environment: the scratch profile's API key is
   invalid (environment blocker, not bundle behavior). Hook semantics are covered

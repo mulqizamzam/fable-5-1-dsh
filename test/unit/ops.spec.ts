@@ -12,11 +12,12 @@ import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import Fable51Policy from '../../src/index.ts'
 
 interface Envelope {
+  ok: boolean
   spec: string
   output: Record<string, unknown>
   rerun: boolean
@@ -41,16 +42,16 @@ async function setup(config: Record<string, unknown> = {}): Promise<Context> {
 }
 
 async function execute(ctx: Context, name: string, args: unknown): Promise<RunResult> {
-  const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: randomUUID(), name: `fable51.${name}`, arguments: args })
+  const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId(randomUUID()), name: `fable51.${name}`, arguments: args })
   assert.equal(result.isError, false, `fable51.${name} failed: ${JSON.stringify(result.content)}`)
-  return result as RunResult
+  return result as unknown as RunResult
 }
 
 function envelope(result: RunResult): Envelope {
   return result.value
 }
 
-function worklogFor(ctx: Context, stage: string): Array<{ output: string; check: string; verdict: string; unverified: string[] }> {
+function worklogFor(ctx: Context, stage: string): Array<{ output: string; check: string; verdict: string; unverified: readonly string[] }> {
   return ctx.fable51.worklog.filter((entry) => entry.stage === stage)
 }
 
@@ -86,8 +87,8 @@ describe('fable51 ops tools', () => {
       assert.deepEqual(logged[0] && [...logged[0].unverified], ['stage timebox expired'])
 
       const rerun = await execute(ctx, 'timeboxing', { stage: 'build', elapsedMs: 700_000 })
-      assert.equal(envelope(rerun).rerun, true, 'same input must replay the cache')
-      assert.equal(worklogFor(ctx, 'build').length, 1, 'rerun must not append a second timebox line')
+      assert.equal(envelope(rerun).rerun, false, 'timeboxing is effectful: it must re-execute, not replay a cached answer')
+      assert.equal(worklogFor(ctx, 'build').length, 2, 'each call records its own timebox line')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -119,7 +120,8 @@ describe('fable51 ops tools', () => {
       assert.equal(logged.length, 1)
       assert.ok(logged[0]?.output.includes('s'), 'the winning value must be logged')
 
-      assert.equal(envelope(await execute(ctx, 'conflict-resolution', args)).rerun, true)
+      assert.equal(envelope(await execute(ctx, 'conflict-resolution', args)).rerun, false)
+      assert.equal(worklogFor(ctx, 'conflict-resolution').length, 2, 'an effectful tool logs on every call')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -152,8 +154,8 @@ describe('fable51 ops tools', () => {
       assert.equal(logged[0]?.output, line, 'the worklog line must equal the returned trace')
       assert.equal(logged[0]?.verdict, 'contributed')
 
-      assert.equal(envelope(await execute(ctx, 'observability', { stage: 'research', verdict: 'contributed', tokens: 1234 })).rerun, true)
-      assert.equal(worklogFor(ctx, 'research').length, 1)
+      assert.equal(envelope(await execute(ctx, 'observability', { stage: 'research', verdict: 'contributed', tokens: 1234 })).rerun, false)
+      assert.equal(worklogFor(ctx, 'research').length, 2)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -198,17 +200,17 @@ describe('fable51 ops tools', () => {
       assert.equal(read.output.action, 'abort')
       assert.equal(worklogFor(ctx, 'sandbox-boundaries').length, 0, 'an allowed read is not logged')
 
+      // escapeAction 'abort' is enforced now, not merely reported: the escape is
+      // logged and the call comes back as an ok:false envelope.
       const write = envelope(await execute(ctx, 'sandbox-boundaries', { path: 'src/index.ts', operation: 'write' }))
-      assert.equal(write.output.allowed, false)
-      assert.equal(write.output.escape, true)
-      assert.equal(write.output.action, 'abort')
+      assert.equal(write.ok, false, 'an aborted escape must not report a usable result')
       const logged = worklogFor(ctx, 'sandbox-boundaries')
       assert.equal(logged.length, 1, 'an escape must be logged')
       assert.equal(logged[0]?.verdict, 'discarded')
       assert.ok(logged[0]?.unverified[0]?.includes('write src/index.ts'), 'the escape must be itemized')
 
-      assert.equal(envelope(await execute(ctx, 'sandbox-boundaries', { path: 'src/index.ts', operation: 'write' })).rerun, true)
-      assert.equal(worklogFor(ctx, 'sandbox-boundaries').length, 1, 'rerun must not double-log')
+      assert.equal(envelope(await execute(ctx, 'sandbox-boundaries', { path: 'src/index.ts', operation: 'write' })).ok, false)
+      assert.equal(worklogFor(ctx, 'sandbox-boundaries').length, 2, 'each escape attempt is logged')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -264,8 +266,8 @@ describe('fable51 ops tools', () => {
       assert.ok(logged[0]?.output.includes('cache key collision'))
       assert.ok(logged[0]?.check.includes('ops rerun false then true'), 'the catching test must be carried in the check')
 
-      assert.equal(envelope(await execute(ctx, 'postmortem-format', args)).rerun, true)
-      assert.equal(worklogFor(ctx, 'postmortem').length, 1)
+      assert.equal(envelope(await execute(ctx, 'postmortem-format', args)).rerun, false)
+      assert.equal(worklogFor(ctx, 'postmortem').length, 2)
     } finally {
       await ctx.fiber.dispose()
     }

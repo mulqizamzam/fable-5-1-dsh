@@ -168,6 +168,7 @@ export function reasoningCoreTools(): ToolSpec[] {
   return [
     {
       spec: '31',
+      effectful: true,
       name: 'reasoning-forking',
       description: 'Decide the reasoning structure: fork when more than one candidate survives and fork budget remains, merge when candidates remain but the budget is spent, keep a lone candidate, discard none (spec 31).',
       parameters: {
@@ -286,6 +287,7 @@ export function reasoningCoreTools(): ToolSpec[] {
     },
     {
       spec: '38',
+      effectful: true,
       name: 'reasoning-checkpoint',
       description: 'Snapshot a reasoning pass at its boundary so the run can be resumed or audited later (spec 38).',
       parameters: {
@@ -403,7 +405,9 @@ export function reasoningCoreTools(): ToolSpec[] {
         const votes = requireVotes(asRecord(args).votes)
         const totals = new Map<string, { value: unknown; weight: number }>()
         for (const vote of votes) {
-          const key = JSON.stringify(vote.value)
+          // Canonical key (spec 65): raw stringify would split one value into two
+          // buckets on key order alone, letting the minority fragment win.
+          const key = fingerprint(vote.value)
           const current = totals.get(key)
           if (current === undefined) totals.set(key, { value: vote.value, weight: vote.weight })
           else current.weight += vote.weight
@@ -510,6 +514,7 @@ export function reasoningCoreTools(): ToolSpec[] {
     },
     {
       spec: '45',
+      effectful: true,
       name: 'merge-strategy',
       description: 'Merge parallel reasoning results by union, intersection, or weighted concatenation, each preserving first-seen order (spec 45).',
       parameters: {

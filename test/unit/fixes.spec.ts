@@ -8,7 +8,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -27,7 +27,7 @@ async function setup(): Promise<Context> {
 async function call(ctx: Context, name: string, args: Record<string, unknown>) {
   return ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: 'fix',
+    callId: ToolCallId('fix'),
     name: `fable51.${name}`,
     arguments: args,
   })
@@ -91,10 +91,15 @@ describe('BUG 3 — spec 5 verification-gates must be fail-loud, not forgeable',
     const ctx = await setup()
     try {
       const forged = await call(ctx, 'verification-gates', {})
-      assert.equal(forged.isError, true, 'a gate with no expected/actual outcome must not pass')
+      // guard: a malformed gate is an ok:false envelope, never a host tool error that looks forgeable (spec 5)
+      const forgedOut = (forged as unknown as { value: { ok: boolean; output: { error: string } } }).value
+      assert.equal(forgedOut.ok, false, 'a gate with no expected/actual outcome must not pass')
+      assert.equal(forgedOut.output.error, 'check must be a non-empty string')
       const before = ctx.fable51.gateLog.length
       const half = await call(ctx, 'verification-gates', { check: 'c', cmd: 'run', expected: 'A' })
-      assert.equal(half.isError, true, 'a gate without an observed outcome must not pass')
+      const halfOut = (half as unknown as { value: { ok: boolean; output: { error: string } } }).value
+      assert.equal(halfOut.ok, false, 'a gate without an observed outcome must not pass')
+      assert.equal(halfOut.output.error, 'actual must be a non-empty string')
       assert.equal(ctx.fable51.gateLog.length, before, 'no gate may be recorded from incomplete args')
     } finally {
       await ctx.fiber.dispose()
@@ -219,7 +224,7 @@ describe('GAP 3 — spec 58 convergence: small deltas for N turns AND no new evi
       await drive()
       const stable = ctx.fable51.converged()
       assert.equal(stable.converged, true, 'N stable turns with no new evidence converge')
-      ctx.emit('tools/result', { name: 'fable51.context-management', arguments: {} }, { content: [{ type: 'text', text: 'fresh artifact' }], isError: false })
+      ctx.emit('tools/result', { name: 'fable51.context-management', arguments: {} } as never, { content: [{ type: 'text', text: 'fresh artifact' }], isError: false } as never)
       assert.equal(ctx.fable51.converged().converged, false, 'new evidence blocks convergence')
     } finally {
       await ctx.fiber.dispose()
@@ -253,7 +258,8 @@ describe('GAP 5 — specs 10/18 handoff + rollback to the last verified checkpoi
     try {
       await call(ctx, 'reasoning-checkpoint', { passId: 'cp-1', state: { turn: 1 } })
       ctx.emit('session/disposed', {} as never)
-      const handoff = ctx.fable51.snapshots.get('session-handoff')
+      const handoffId = [...ctx.fable51.snapshots.ids()].reverse().find((id) => id.startsWith('session-handoff'))
+      const handoff = handoffId ? ctx.fable51.snapshots.get(handoffId) : undefined
       assert.ok(handoff, 'session disposal must persist the handoff state')
       assert.ok(Array.isArray(handoff.data.stageMap), 'the handoff carries the stage map')
       assert.equal(typeof handoff.data.lastHash, 'string')
@@ -307,7 +313,11 @@ describe('GAP 6 — spec 3 tool-call-batching partitions by dependency', () => {
           { name: 'b', deps: ['a'] },
         ],
       })
-      assert.equal(res.isError, true, 'a dependency cycle must not batch')
+      assert.equal(res.isError, false, 'a cycle is an answer, not a host throw')
+      const out = (res as unknown as { value: { ok: boolean; output: { error: string } } }).value
+      assert.equal(out.ok, false, 'a dependency cycle must not batch')
+      // guard: the cycle still throws inside execute — the factory turns it into ok:false (spec 3)
+      assert.equal(out.output.error, 'calls cannot batch: dependency cycle among a, b')
     } finally {
       await ctx.fiber.dispose()
     }

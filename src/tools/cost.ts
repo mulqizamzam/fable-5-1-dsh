@@ -22,6 +22,13 @@ const RISK_UNIT_COST = 1000
 
 const ACCURACY_TARGET = 0.9
 
+/** A non-finite input would book or return NaN, violating the tool's own outputSchema. */
+function finiteNumber(args: Record<string, unknown>, key: string): number {
+  const value = args[key]
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`${key} must be a finite number`)
+  return value
+}
+
 export function costTools(): ToolSpec[] {
   return [
     {
@@ -46,7 +53,8 @@ export function costTools(): ToolSpec[] {
       },
       execute(args): TaskClassCurve {
         const { taskClass } = args as { taskClass: string }
-        const curve = TASK_CURVE[taskClass]
+        // Own-property lookup: a prototype key would otherwise resolve a tier that never existed.
+        const curve = Object.hasOwn(TASK_CURVE, taskClass) ? TASK_CURVE[taskClass] : undefined
         if (curve === undefined) throw new Error(`cost-accuracy-tradeoff: unknown taskClass ${String(taskClass)}`)
         return { tier: curve.tier, expectedCost: curve.expectedCost, accuracy: curve.accuracy }
       },
@@ -72,13 +80,17 @@ export function costTools(): ToolSpec[] {
         },
       },
       execute(args): { cost: number } {
-        const { tokens, latencyMs, riskWeight } = args as { tokens: number; latencyMs: number; riskWeight: number }
+        const record = args as Record<string, unknown>
+        const tokens = finiteNumber(record, 'tokens')
+        const latencyMs = finiteNumber(record, 'latencyMs')
+        const riskWeight = finiteNumber(record, 'riskWeight')
         const cost = tokens * TOKEN_RATE + latencyMs * LATENCY_RATE + riskWeight * RISK_UNIT_COST
         return { cost }
       },
     },
     {
       spec: '95',
+      effectful: true,
       name: 'pass-cost-accounting',
       description: 'Account one reasoning pass into the cost ledger — tokens, producer+verifier latency, retries as risk — and return its running stage cost (spec 95).',
       parameters: {
@@ -102,7 +114,13 @@ export function costTools(): ToolSpec[] {
         },
       },
       execute(args, { service }): { tokens: number; latencyMs: number; risk: number } {
-        const { passId, tokens, latencyMs, retries, verifierMs } = args as { passId: string; tokens: number; latencyMs: number; retries: number; verifierMs: number }
+        const record = args as Record<string, unknown>
+        const passId = record['passId']
+        if (typeof passId !== 'string' || passId.length === 0) throw new Error('passId must be a non-empty string')
+        const tokens = finiteNumber(record, 'tokens')
+        const latencyMs = finiteNumber(record, 'latencyMs')
+        const retries = finiteNumber(record, 'retries')
+        const verifierMs = finiteNumber(record, 'verifierMs')
         const stage = `pass:${passId}`
         service.recordCost({
           stage,
@@ -116,6 +134,7 @@ export function costTools(): ToolSpec[] {
     },
     {
       spec: '97',
+      effectful: true,
       name: 'pass-sla',
       description: 'Check a reasoning pass against its latency/token/accuracy SLA; on breach record a worklog line and degrade (spec 97).',
       parameters: {
@@ -146,16 +165,17 @@ export function costTools(): ToolSpec[] {
         },
       },
       execute(args, { service }): { breaches: string[]; action: 'ok' | 'log+degrade' } {
-        const { passId, latencyMs, tokens, accuracy, targets } = args as {
-          passId: string
-          latencyMs: number
-          tokens: number
-          accuracy: number
-          targets?: { latencyMs?: number; tokens?: number; accuracy?: number }
-        }
-        const latencyTarget = targets?.latencyMs ?? service.config.budget.passTimeoutMs
-        const tokensTarget = targets?.tokens ?? service.config.budget.stageTokenBudget
-        const accuracyTarget = targets?.accuracy ?? ACCURACY_TARGET
+        const record = args as Record<string, unknown>
+        const { targets } = record as { targets?: Record<string, unknown> }
+        const passId = String(record.passId ?? '')
+        // A NaN measurement compares false against every target, so it would
+        // report "ok" for a pass nobody measured.
+        const latencyMs = finiteNumber(record, 'latencyMs')
+        const tokens = finiteNumber(record, 'tokens')
+        const accuracy = finiteNumber(record, 'accuracy')
+        const latencyTarget = targets?.latencyMs === undefined ? service.config.budget.passTimeoutMs : finiteNumber(targets, 'latencyMs')
+        const tokensTarget = targets?.tokens === undefined ? service.config.budget.stageTokenBudget : finiteNumber(targets, 'tokens')
+        const accuracyTarget = targets?.accuracy === undefined ? ACCURACY_TARGET : finiteNumber(targets, 'accuracy')
         const breaches: string[] = []
         if (latencyMs > latencyTarget) breaches.push('latency')
         if (tokens > tokensTarget) breaches.push('tokens')

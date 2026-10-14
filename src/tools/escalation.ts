@@ -3,9 +3,9 @@
  *
  * Clarification halts (8), the replan budget (14), the human-in-the-loop
  * gate (27), the escalation ladder (28), abort criteria (52), the pass
- * timeout (72), and the pass retry policy (81). Tools 14 and 28 advance
- * service state; the shared cache keeps them idempotent — identical args
- * replay the first output instead of advancing twice (spec 19).
+ * timeout (72), and the pass retry policy (81). Tools 14, 28 and 72 advance
+ * service state and are marked effectful: they bypass the cache so every call
+ * moves the counter instead of replaying the first output (spec 19).
  */
 import type { ToolSpec } from './shared.ts'
 import type { ApprovalRequest, EscalationRung } from '../policy-service.ts'
@@ -59,6 +59,7 @@ export function escalationTools(): ToolSpec[] {
     },
     {
       spec: '14',
+      effectful: true,
       name: 'replan-budget',
       description: 'Account a replan against the budget (max 2); a third replan escalates (spec 14).',
       parameters: {
@@ -112,12 +113,30 @@ export function escalationTools(): ToolSpec[] {
         },
       },
       execute(args, { service }) {
-        const { action, irreversible, external, estimatedCost } = args as ApprovalRequest
-        return service.requiresApproval({ action, irreversible, external, estimatedCost })
+        const { action, irreversible, external, estimatedCost } = args as Partial<ApprovalRequest>
+        // Fail closed: an undeclared risk flag is itself the risk (spec 27).
+        const hasIrreversible = typeof irreversible === 'boolean'
+        const hasExternal = typeof external === 'boolean'
+        const hasCost = typeof estimatedCost === 'number' && Number.isFinite(estimatedCost)
+        if (!hasIrreversible || !hasExternal || !hasCost) {
+          const absent = [
+            ...(hasIrreversible ? [] : ['irreversible']),
+            ...(hasExternal ? [] : ['external']),
+            ...(hasCost ? [] : ['estimatedCost']),
+          ]
+          return { required: true, reason: `risk flags not supplied (${absent.join(', ')}) — approval required` }
+        }
+        return service.requiresApproval({
+          action: action ?? '',
+          irreversible,
+          external,
+          estimatedCost,
+        })
       },
     },
     {
       spec: '28',
+      effectful: true,
       name: 'escalation-ladder',
       description: 'Advance the escalation ladder retry→replan→downgrade→ask, one rung per failure; a success reads the current rung (spec 28).',
       parameters: {
@@ -176,6 +195,7 @@ export function escalationTools(): ToolSpec[] {
     },
     {
       spec: '72',
+      effectful: true,
       name: 'pass-timeout',
       description: 'Enforce the per-pass deadline: on breach, snapshot the pass as unverified and escalate (spec 72).',
       parameters: {
@@ -197,6 +217,10 @@ export function escalationTools(): ToolSpec[] {
       },
       execute(args, { service }) {
         const { passId, elapsedMs } = args as { passId: string; elapsedMs: number }
+        // A non-finite elapsed would read as "within the deadline": refuse it instead.
+        if (typeof elapsedMs !== 'number' || !Number.isFinite(elapsedMs)) {
+          throw new Error('elapsedMs must be a finite number')
+        }
         const deadline = service.config.budget.passTimeoutMs
         if (elapsedMs <= deadline) {
           return { passed: true, elapsedMs }
@@ -239,6 +263,10 @@ export function escalationTools(): ToolSpec[] {
       },
       execute(args, { service }) {
         const { attempt } = args as { attempt: number }
+        // attempt < 1 or fractional would buy a longer backoff for less work.
+        if (typeof attempt !== 'number' || !Number.isInteger(attempt) || attempt < 1) {
+          throw new Error('attempt must be an integer of at least 1')
+        }
         const max = service.config.budget.maxPassRetries
         return {
           retry: attempt <= max,

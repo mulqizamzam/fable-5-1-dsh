@@ -135,6 +135,10 @@ export function reasoningFlowTools(): ToolSpec[] {
         const contradiction = requireNumber(record, 'contradiction')
         const coverage = requireNumber(record, 'coverage')
         const weights = record.weights === undefined ? [1, 1, 1] : (requireArray(record, 'weights') as number[])
+        // A non-numeric weight makes every product NaN, and the declared score is a number.
+        for (const [index, weight] of weights.entries()) {
+          if (typeof weight !== 'number' || !Number.isFinite(weight)) throw new Error(`weights[${index}] must be a finite number`)
+        }
         const [w1 = 1, w2 = 1, w3 = 1] = weights
         return { score: w1 * evidence - w2 * contradiction + w3 * coverage }
       },
@@ -181,8 +185,12 @@ export function reasoningFlowTools(): ToolSpec[] {
       execute(args, { service }) {
         const record = asRecord(args)
         let weighted: number
-        if (typeof record.weighted === 'number') weighted = record.weighted
-        else {
+        if (typeof record.weighted === 'number') {
+          // `typeof NaN === 'number'`, so only a finiteness check keeps NaN out of
+          // the declared number field; a NaN weight would also fall through to 'discarded'.
+          if (!Number.isFinite(record.weighted)) throw new Error('weighted must be a finite number')
+          weighted = record.weighted
+        } else {
           const score = service.score({
             evidence: requireNumber(record, 'evidence', -1e9, 1e9),
             coherence: requireNumber(record, 'coherence', -1e9, 1e9),
@@ -249,7 +257,16 @@ export function reasoningFlowTools(): ToolSpec[] {
       },
       execute(args) {
         const record = asRecord(args)
-        const passes = requireArray(record, 'passes') as unknown as Array<{ id: string; tokens: number; contribution: number }>
+        const passes = requireArray(record, 'passes').map((entry, index) => {
+          const pass = entry as Record<string, unknown>
+          // tokens and contribution are echoed into the ranked schema as numbers and feed the median.
+          for (const key of ['tokens', 'contribution']) {
+            if (typeof pass[key] !== 'number' || !Number.isFinite(pass[key])) {
+              throw new Error(`passes[${index}].${key} must be a finite number`)
+            }
+          }
+          return pass as unknown as { id: string; tokens: number; contribution: number }
+        })
         const tokenMedian = median(passes.map((p) => p.tokens))
         const contributionMedian = median(passes.map((p) => p.contribution))
         const ranked = passes
@@ -369,6 +386,7 @@ export function reasoningFlowTools(): ToolSpec[] {
     },
     {
       spec: '69',
+      effectful: true,
       name: 'reasoning-lineage',
       description: 'Record a pass and its parent edge in the lineage tree; a pass without parentId is a root (spec 69).',
       parameters: {

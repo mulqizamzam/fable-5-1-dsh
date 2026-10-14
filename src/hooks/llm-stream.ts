@@ -28,55 +28,75 @@ export function wireLlmStream(ctx: Context): void {
     const stage = `llm:${options.model ?? 'unknown'}`
     const seen = new Set<string>()
     let tokens = 0
-    for await (const raw of next()) {
-      const chunk: StreamChunk = raw
-      const text = chunkText(chunk)
-      if (text) {
-        tokens += Math.ceil(text.length / 4)
-        // spec 53: chunk-level dedup fingerprint.
-        const fp = fingerprint(text)
-        if (seen.has(fp)) {
+    // One plugin step in a hot path: a fault is logged, never escapes the generator.
+    const guard = (step: () => void): void => {
+      try {
+        step()
+      } catch (err) {
+        ctx.logger('fable51').warn(`llm/stream fault in ${stage}: ${String(err)}`)
+      }
+    }
+    try {
+      for await (const raw of next()) {
+        const chunk: StreamChunk = raw
+        const text = chunkText(chunk)
+        if (text) {
+          guard(() => {
+            tokens += Math.ceil(text.length / 4)
+            // spec 53: chunk-level dedup fingerprint.
+            const fp = fingerprint(text)
+            if (seen.has(fp)) {
+              svc.recordWorklog({
+                stage,
+                output: 'duplicate chunk suppressed from accounting (stream itself passes through)',
+                check: 'reasoning dedup',
+                verdict: 'neutral',
+                unverified: [],
+                at: Date.now(),
+              })
+            }
+            seen.add(fp)
+          })
+        }
+        yield raw
+      }
+    } finally {
+      // Runs on the cancelled path too, so an abandoned stream is still accounted.
+      // spec 15: reasoning between tool calls is interleaved, never parallel.
+      guard(() => svc.labelPass(stage, 'interleaved'))
+      // spec 58: this turn's distance from the previous turn — a stable stream
+      // is one convergence signal. New evidence (tools/result) is the other.
+      guard(() => {
+        const previous = svc.previousTurnTokens.get(stage) ?? 0
+        const distance = previous === 0 ? 0 : Math.abs(tokens - previous) / previous
+        svc.previousTurnTokens.set(stage, tokens)
+        svc.recordTurnDistance(distance)
+      })
+      // spec 22: per-stage token accounting with 80% alert / 100% hard stop signal.
+      guard(() => {
+        const budget = svc.addStageTokens(stage, tokens)
+        if (budget.alert) {
           svc.recordWorklog({
             stage,
-            output: 'duplicate chunk suppressed from accounting (stream itself passes through)',
-            check: 'reasoning dedup',
+            output: `token budget ${budget.used}${budget.stop ? ' (STOP)' : ' (alert)'}`,
+            check: 'token budget per stage',
+            verdict: budget.stop ? 'discarded' : 'neutral',
+            unverified: budget.stop ? ['stage exceeded token budget'] : [],
+            at: Date.now(),
+          })
+        }
+      })
+      guard(() => {
+        if (svc.converged().converged) {
+          svc.recordWorklog({
+            stage,
+            output: `converged: ${svc.config.reasoning.convergenceTurns} stable turns below delta ${svc.config.reasoning.convergenceDelta}, no new evidence`,
+            check: 'convergence criteria',
             verdict: 'neutral',
             unverified: [],
             at: Date.now(),
           })
         }
-        seen.add(fp)
-      }
-      yield raw
-    }
-    // spec 15: reasoning between tool calls is interleaved, never parallel.
-    svc.labelPass(stage, 'interleaved')
-    // spec 58: this turn's distance from the previous turn — a stable stream
-    // is one convergence signal. New evidence (tools/result) is the other.
-    const previous = svc.previousTurnTokens.get(stage) ?? 0
-    const distance = previous === 0 ? 0 : Math.abs(tokens - previous) / previous
-    svc.previousTurnTokens.set(stage, tokens)
-    svc.recordTurnDistance(distance)
-    // spec 22: per-stage token accounting with 80% alert / 100% hard stop signal.
-    const budget = svc.addStageTokens(stage, tokens)
-    if (budget.alert) {
-      svc.recordWorklog({
-        stage,
-        output: `token budget ${budget.used}${budget.stop ? ' (STOP)' : ' (alert)'}`,
-        check: 'token budget per stage',
-        verdict: budget.stop ? 'discarded' : 'neutral',
-        unverified: budget.stop ? ['stage exceeded token budget'] : [],
-        at: Date.now(),
-      })
-    }
-    if (svc.converged().converged) {
-      svc.recordWorklog({
-        stage,
-        output: `converged: ${svc.config.reasoning.convergenceTurns} stable turns below delta ${svc.config.reasoning.convergenceDelta}, no new evidence`,
-        check: 'convergence criteria',
-        verdict: 'neutral',
-        unverified: [],
-        at: Date.now(),
       })
     }
   })

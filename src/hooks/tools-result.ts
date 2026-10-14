@@ -1,5 +1,5 @@
 /**
- * tools/result hook — specs 5, 7, 12, 13, 47, 49, 58.
+ * tools/result hook — specs 5, 7, 12, 13, 47, 58.
  *
  * Verified contract: `tools/result` is EMIT-mode with payload
  * `(exec, result)`. Observers cannot rewrite the result; this hook tags
@@ -7,7 +7,6 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Fable51Policy } from '../policy-service.ts'
-import { fingerprint } from '../state/cache.ts'
 
 interface ResultLike {
   content?: Array<{ type: string; text?: string }>
@@ -21,12 +20,6 @@ export function wireToolsResult(ctx: Context): void {
       .filter((block) => block.type === 'text' && typeof block.text === 'string')
       .map((block) => block.text as string)
       .join('\n')
-    // spec 49: trace record — input hash, output hash, per tool result.
-    const record = {
-      id: `${exec.name ?? 'unknown'}@${Date.now()}`,
-      inHash: fingerprint(exec.arguments ?? null),
-      outHash: fingerprint(text),
-    }
     // spec 12: a "verified" claim is only recorded when the result carries
     // evidence (non-error, non-empty). Everything else lands unverified.
     const verified = !result.isError && text.length > 0
@@ -48,6 +41,5 @@ export function wireToolsResult(ctx: Context): void {
       riskWeight: result.isError ? 1 : 0,
       at: Date.now(),
     })
-    void record
   })
 }

@@ -7,7 +7,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -52,7 +52,7 @@ describe('Gate 1 — activation', () => {
   it('a bundle tool executes and returns the typed envelope; rerun is idempotent', async () => {
     const ctx = await setup()
     try {
-      const exec = { signal: new AbortController().signal, callId: 'c1', name: 'fable51.context-management', arguments: { fillRatio: 0.95 } }
+      const exec = { signal: new AbortController().signal, callId: ToolCallId('c1'), name: 'fable51.context-management', arguments: { fillRatio: 0.95 } }
       const first = await ctx.tools.execute(exec)
       assert.equal(first.isError, false, `tool failed: ${JSON.stringify(first.content)}`)
       const value = first.value as { spec: string; output: { action: string }; rerun: boolean }
@@ -85,7 +85,7 @@ describe('Gate 3 — hooks fire', () => {
     const ctx = await setup()
     try {
       const before = ctx.fable51.worklog.length
-      ctx.emit('tools/result', { name: 'fable51.context-management', arguments: { fillRatio: 0.5 } }, { content: [{ type: 'text', text: 'ok' }], isError: false })
+      ctx.emit('tools/result', { name: 'fable51.context-management', arguments: { fillRatio: 0.5 } } as never, { content: [{ type: 'text', text: 'ok' }], isError: false } as never)
       assert.ok(ctx.fable51.worklog.length > before, 'tools/result observer must append a worklog line')
     } finally {
       await ctx.fiber.dispose()

@@ -1,5 +1,5 @@
 import type { Fable51Config } from './schema.ts'
-import { validateConfig } from './schema.ts'
+import { ConfigError, validateConfig } from './schema.ts'
 
 /** Deep-merge a partial config onto the defaults, then fail-loud validate. */
 export function resolveConfig(partial: unknown): Fable51Config {
@@ -8,7 +8,12 @@ export function resolveConfig(partial: unknown): Fable51Config {
 }
 
 function obj(value: unknown): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+  // Only `undefined` means "no config supplied"; every other non-mapping is a
+  // typo or bad YAML indentation and must not resolve to 100% defaults.
+  if (value === undefined) return {}
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigError('config', `expected a config object, received ${value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value}`)
+  }
   return value as Record<string, unknown>
 }
 

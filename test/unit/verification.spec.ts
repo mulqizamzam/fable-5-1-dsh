@@ -10,7 +10,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -39,7 +39,7 @@ async function setup(): Promise<Context> {
 async function call(ctx: Context, name: string, args: Record<string, unknown>): Promise<Envelope> {
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: 'c1',
+    callId: ToolCallId('c1'),
     name: `fable51.${name}`,
     arguments: args,
   })
@@ -75,7 +75,7 @@ describe('verification tools — registry surface', () => {
 describe('spec 5 — verification-gates', () => {
   const args = { check: 'tests', cmd: 'node --test', expected: 'pass', actual: 'pass' }
 
-  it('records a passing gate in the gate log and replays on rerun', async () => {
+  it('records a passing gate in the gate log and records it again on rerun', async () => {
     const ctx = await setup()
     try {
       const first = await call(ctx, 'verification-gates', args)
@@ -91,9 +91,15 @@ describe('spec 5 — verification-gates', () => {
       assert.deepEqual(recorded, { gate: 'tests', cmd: 'node --test', expected: 'pass', actual: 'pass', pass: true, at: recorded?.at })
 
       const second = await call(ctx, 'verification-gates', args)
-      assert.equal(second.rerun, true)
-      assert.deepEqual(second.output, first.output)
-      assert.equal(ctx.fable51.gateLog.length, 1, 'a rerun must not double-record the gate (spec 19)')
+      // Effectful: the old unconditional cache replayed the first answer, so a rerun recorded no second gate result.
+      assert.equal(second.rerun, false)
+      assert.equal((second.output as { pass: boolean }).pass, true)
+      assert.equal(ctx.fable51.gateLog.length, 2, 'each call records its own gate result')
+      assert.deepEqual(
+        ctx.fable51.gateLog.map((g) => ({ ...g, at: 0 })),
+        [first.output, second.output].map((o) => ({ ...(o as Record<string, unknown>), at: 0 })),
+        'both gate records must describe the same comparison',
+      )
     } finally {
       await ctx.fiber.dispose()
     }
@@ -293,13 +299,17 @@ describe('spec 48 — independent-replication', () => {
       assert.equal(first.spec, '48')
       assert.equal(first.rerun, false)
       const output = first.output as { replicaId: string; seed: number }
-      assert.equal(output.seed, ctx.fable51.seed() + 1)
-      assert.equal(output.seed, 20261012)
+      // The old seed was the bare determinism constant, so every replica ran the source pass verbatim (spec 48).
+      assert.notEqual(output.seed, ctx.fable51.seed(), 'the replica seed must be derived, not the bare determinism seed')
       assert.equal(output.replicaId, fingerprint({ passId: 'pass1', input: { q: 'sky' }, seed: output.seed }))
+
+      const otherPass = await call(ctx, 'independent-replication', { passId: 'pass2', input: { q: 'sky' } })
+      assert.notEqual((otherPass.output as { seed: number }).seed, output.seed, 'a different passId must derive a different seed')
+      assert.equal((otherPass.output as { replicaId: string }).replicaId !== output.replicaId, true)
 
       const other = await call(ctx, 'independent-replication', { passId: 'pass1', input: { q: 'sea' } })
       assert.equal((other.output as { replicaId: string }).replicaId !== output.replicaId, true)
-      assert.equal((other.output as { seed: number }).seed, output.seed)
+      assert.notEqual((other.output as { seed: number }).seed, output.seed, 'a different input must derive a different seed')
 
       const replay = await call(ctx, 'independent-replication', { passId: 'pass1', input: { q: 'sky' } })
       assert.equal(replay.rerun, true)

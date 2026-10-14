@@ -89,14 +89,22 @@ export class PassLineage {
   }
 
   /**
-   * Spec 87 (pass-lineage-prune): drop ancestry that no live pass needs,
-   * keeping audit-protected ids. Distinct from gc: gc preserves the ancestor
-   * chain of live passes (traceability, spec 94); prune deliberately does
-   * not — it is the anti-bloat operation.
+   * Spec 87 (pass-lineage-prune): drop passes that no live pass needs, keeping
+   * audit-protected ids and the ancestor chain of every live pass — without the
+   * chain a live pass keeps reporting parents that were just dropped.
    */
   prune(liveIds: Iterable<string>): readonly string[] {
     const keep = new Set(this.auditKeep)
     for (const id of liveIds) keep.add(id)
+    for (const id of [...keep]) {
+      let cursor: string | null = id
+      const seen = new Set<string>()
+      while (cursor !== null && !seen.has(cursor)) {
+        seen.add(cursor)
+        keep.add(cursor)
+        cursor = this.passes.get(cursor)?.parentId ?? null
+      }
+    }
     const dropped: string[] = []
     for (const id of [...this.passes.keys()]) {
       if (keep.has(id)) continue

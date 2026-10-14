@@ -61,6 +61,28 @@ export interface ApprovalRequest {
 const LADDER: readonly EscalationRung[] = ['retry', 'replan', 'downgrade', 'ask']
 const EFFORT_LADDER = ['low', 'mid', 'high', 'max'] as const
 
+// Bundle-state caps. Not yet configurable — no config key exists for them; these
+// exist only so a long-lived host cannot grow state for the process lifetime.
+/** Worklog ring cap (spec 13): newest kept, oldest trimmed. */
+const WORKLOG_CAP = 5000
+/** Verification-gate log ring cap (specs 5/12). */
+const GATE_LOG_CAP = 5000
+/** Cost-ledger ring cap (spec 95). */
+const COST_LEDGER_CAP = 5000
+/** Per-turn convergence ring floor (spec 58); raised to cover the configured window. */
+const TURN_DISTANCES_CAP = 64
+/** Cache FIFO cap (specs 43/65). */
+const CACHE_CAP = 2000
+/** Snapshot FIFO cap (specs 38/46). */
+const SNAPSHOT_CAP = 256
+
+/** Ring append: trims the oldest entries past `cap`, keeping the newest. */
+function pushCapped<T>(items: T[], entry: T, cap: number): T {
+  items.push(entry)
+  if (items.length > cap) items.splice(0, items.length - cap)
+  return entry
+}
+
 export class Fable51Policy extends Service {
   static inject = ['tools', 'llm', 'sessions'] as const
 
@@ -129,11 +151,14 @@ export class Fable51Policy extends Service {
   readonly config: Fable51Config
   readonly registry = new PolicyRegistry()
   readonly lineage = new PassLineage()
-  readonly cache = new ReasonCache()
-  readonly snapshots = new SnapshotStore()
+  readonly cache = new ReasonCache(CACHE_CAP)
+  readonly snapshots = new SnapshotStore(SNAPSHOT_CAP)
   readonly gateLog: GateResult[] = []
   readonly worklog: WorklogEntry[] = []
   readonly costLedger: CostLedgerEntry[] = []
+
+  /** Handoff id discriminator: a constant id made every session overwrite the last. */
+  private handoffSeq = 0
 
   /** Per-stage token accounting (spec 22). */
   stageTokens = new Map<string, number>()
@@ -144,8 +169,6 @@ export class Fable51Policy extends Service {
   /** Fork/merge budget counters (spec 96). */
   forksThisStage = 0
   mergesThisStage = 0
-  /** Queue depth for backpressure (spec 71). */
-  queueDepth = 0
   /** Current effort tier, escalated on task signal (spec 6). */
   effortTier: Fable51Config['effort']['defaultTier']
   /** Reasoning-mode label per pass id (spec 15): parallel ≠ sequential ≠ interleaved. */
@@ -241,7 +264,8 @@ export class Fable51Policy extends Service {
   // ---- spec 58: convergence tracking ----
   /** Record one turn's distance from the previous turn (relative token delta). */
   recordTurnDistance(distance: number): void {
-    this.turnDistances.push(distance)
+    // capped at the configured window too, so a window wider than the floor stays measurable
+    pushCapped(this.turnDistances, distance, Math.max(TURN_DISTANCES_CAP, this.config.reasoning.convergenceTurns))
     this.turnCount += 1
   }
 
@@ -262,7 +286,7 @@ export class Fable51Policy extends Service {
 
   // ---- specs 10/18: handoff persistence + rollback target ----
   /** Persist the handoff state: stage map, counters, and the last checkpoint hash (spec 10). */
-  handoffSnapshot(id = 'session-handoff'): Snapshot {
+  handoffSnapshot(id = `session-handoff-${++this.handoffSeq}`): Snapshot {
     return this.snapshots.create(id, {
       stageMap: this.worklog.map((entry) => entry.stage),
       gates: this.gateLog.length,
@@ -303,19 +327,17 @@ export class Fable51Policy extends Service {
 
   // ---- specs 5 / 12: verification gates ----
   recordGate(result: GateResult): GateResult {
-    this.gateLog.push(result)
-    return result
+    return pushCapped(this.gateLog, result, GATE_LOG_CAP)
   }
 
   // ---- spec 13: worklog ----
   recordWorklog(entry: WorklogEntry): WorklogEntry {
-    this.worklog.push(entry)
-    return entry
+    return pushCapped(this.worklog, entry, WORKLOG_CAP)
   }
 
   // ---- spec 95: cost accounting ----
   recordCost(entry: CostLedgerEntry): void {
-    this.costLedger.push(entry)
+    pushCapped(this.costLedger, entry, COST_LEDGER_CAP)
   }
 
   stageCost(stage: string): { tokens: number; latencyMs: number; risk: number } {
@@ -357,7 +379,7 @@ export class Fable51Policy extends Service {
   /** Record a pass into lineage + snapshot boundary (specs 34, 38, 69). */
   recordPass(pass: ReasoningPass): ReasoningPass {
     this.lineage.record(pass)
-    this.lineage.protect(pass.id)
+    // Audit protection stays opt-in via lineage.protect: protecting every pass made the GC keep-set everything.
     return pass
   }
 }

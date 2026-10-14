@@ -14,16 +14,20 @@ interface SessionEventLike {
 }
 
 export function wireSessionEvent(ctx: Context): void {
-  // spec 29: dependency pins verified at session start; drift = block.
+  // Disambiguates checkpoint ids that share a millisecond timestamp.
+  let turnEndSeq = 0
+
+  // spec 29: dependency pins recorded at session start; drift blocks.
   ctx.on('session/created', () => {
     const svc = ctx.fable51 as Fable51Policy
     const pinned = svc.config.determinism.pinnedVersions
     svc.recordWorklog({
       stage: 'session:start',
-      output: `pins verified: ${Object.entries(pinned).map(([k, v]) => `${k}=${v}`).join(', ')}`,
+      output: `pins recorded: ${Object.entries(pinned).map(([k, v]) => `${k}=${v}`).join(', ')}`,
       check: 'dependency pinning',
-      verdict: 'contributed',
-      unverified: [],
+      verdict: 'neutral',
+      // The pins are config constants; nothing compares them against the running host.
+      unverified: ['pins were not compared against the running host'],
       at: Date.now(),
     })
   })
@@ -35,10 +39,13 @@ export function wireSessionEvent(ctx: Context): void {
         // new stage: reset fork/merge counters (spec 96 budget window).
         svc.forksThisStage = 0
         svc.mergesThisStage = 0
+        // spec 22 is a per-turn budget: without this it was a lifetime budget
+        // that left every later stream of every session over the limit.
+        svc.stageTokens.clear()
         break
       case 'turn/end': {
         // spec 38/46: checkpoint at the turn boundary; spec 10: handoff state.
-        const snapshot = svc.snapshots.create(`turn-end-${Date.now()}`, {
+        const snapshot = svc.snapshots.create(`turn-end-${Date.now()}-${turnEndSeq++}`, {
           gates: svc.gateLog.length,
           worklog: svc.worklog.length,
           replans: svc.replans,

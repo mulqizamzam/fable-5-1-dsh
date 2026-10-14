@@ -142,6 +142,7 @@ export function reasoningOpsTools(): ToolSpec[] {
     },
     {
       spec: '77',
+      effectful: true,
       name: 'reasoning-snapshot-diff',
       description: 'Create both snapshots and diff them for drift or regression (spec 77).',
       parameters: {
@@ -192,7 +193,9 @@ export function reasoningOpsTools(): ToolSpec[] {
       execute(args) {
         const record = asRecord(args)
         const workers = requireArray(record, 'workers') as unknown as WorkerOutput[]
-        const merged: Record<string, unknown> = {}
+        // A null prototype keeps a worker-supplied `__proto__` an ordinary own key
+        // instead of an Object.assign that silently repoints the union's prototype.
+        const merged: Record<string, unknown> = Object.create(null) as Record<string, unknown>
         for (const worker of workers.slice().sort((a, b) => a.id.localeCompare(b.id))) {
           const output = worker.output
           if (typeof output !== 'object' || output === null) throw new Error(`worker ${worker.id} output must be an object`)
@@ -203,6 +206,7 @@ export function reasoningOpsTools(): ToolSpec[] {
     },
     {
       spec: '79',
+      effectful: true,
       name: 'pass-observability',
       description: 'Emit the one-line per-pass trace record (spec 79).',
       parameters: {
@@ -319,6 +323,7 @@ export function reasoningOpsTools(): ToolSpec[] {
     },
     {
       spec: '87',
+      effectful: true,
       name: 'pass-lineage-prune',
       description: 'Prune unreferenced ancestry, keeping live passes and audit-protected ids (spec 87).',
       parameters: { type: 'object', required: ['liveIds'], properties: { liveIds: stringArray } },

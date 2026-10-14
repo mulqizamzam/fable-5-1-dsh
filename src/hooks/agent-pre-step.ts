@@ -37,57 +37,51 @@ export function wireAgentPreStep(ctx: Context): void {
   ctx.on('agent/pre-step', async (payload: PreStepPayload, next: () => Promise<PreStepDecision>): Promise<PreStepDecision> => {
     const svc = ctx.fable51 as Fable51Policy
     const stage = `turn-${payload.turn ?? 0}-step-${payload.step ?? 0}`
-    // spec 24: one observability line per step boundary.
-    svc.recordWorklog({
-      stage,
-      output: `pre-step observed (${Array.isArray(payload.messages) ? payload.messages.length : 0} messages)`,
-      check: 'agent/pre-step fired',
-      verdict: 'neutral',
-      unverified: [],
-      at: Date.now(),
-    })
-    // spec 1: context threshold classification for the current message volume.
-    const fillRatio = Math.min(1, (Array.isArray(payload.messages) ? payload.messages.length : 0) / 200)
-    const action = svc.contextAction(fillRatio)
-    if (action !== 'ok') {
+    // Cordis waterfalls do not catch listener throws, so every statement here is
+    // contained: a plugin fault must be logged, never veto the step.
+    try {
+      // spec 24: one observability line per step boundary.
       svc.recordWorklog({
         stage,
-        output: `context action: ${action}`,
-        check: 'context thresholds',
+        output: `pre-step observed (${Array.isArray(payload.messages) ? payload.messages.length : 0} messages)`,
+        check: 'agent/pre-step fired',
         verdict: 'neutral',
         unverified: [],
         at: Date.now(),
       })
-    }
-    // spec 6: pre-first-tool effort escalation — a search/multi-hop/ambiguity
-    // signal in the step's messages raises the effort tier one rung.
-    const messages = Array.isArray(payload.messages) ? payload.messages : []
-    const text = messages.map(messageText).join(' ')
-    const signals = svc.config.effort.escalateOn.filter((signal) => text.includes(signal))
-    if (signals.length > 0) {
-      const { from, to, escalated } = svc.escalateEffort()
-      if (escalated) {
+      // spec 1: context threshold classification for the current message volume.
+      const fillRatio = Math.min(1, (Array.isArray(payload.messages) ? payload.messages.length : 0) / 200)
+      const action = svc.contextAction(fillRatio)
+      if (action !== 'ok') {
         svc.recordWorklog({
           stage,
-          output: `effort escalated ${from} → ${to} on signals: ${signals.join(', ')}`,
-          check: 'effort escalation',
+          output: `context action: ${action}`,
+          check: 'context thresholds',
           verdict: 'neutral',
           unverified: [],
           at: Date.now(),
         })
       }
-    }
-    // spec 71: backpressure — queue depth over budget throttles further forks.
-    const throttled = svc.queueDepth > svc.config.reasoning.maxConcurrentPasses
-    if (throttled) {
-      svc.recordWorklog({
-        stage,
-        output: `backpressure: queue ${svc.queueDepth} > ${svc.config.reasoning.maxConcurrentPasses}`,
-        check: 'reasoning backpressure',
-        verdict: 'neutral',
-        unverified: [],
-        at: Date.now(),
-      })
+      // spec 6: pre-first-tool effort escalation — a search/multi-hop/ambiguity
+      // signal in the step's messages raises the effort tier one rung.
+      const messages = Array.isArray(payload.messages) ? payload.messages : []
+      const text = messages.map(messageText).join(' ')
+      const signals = svc.config.effort.escalateOn.filter((signal) => text.includes(signal))
+      if (signals.length > 0) {
+        const { from, to, escalated } = svc.escalateEffort()
+        if (escalated) {
+          svc.recordWorklog({
+            stage,
+            output: `effort escalated ${from} → ${to} on signals: ${signals.join(', ')}`,
+            check: 'effort escalation',
+            verdict: 'neutral',
+            unverified: [],
+            at: Date.now(),
+          })
+        }
+      }
+    } catch (err) {
+      ctx.logger('fable51').error(`agent/pre-step fault, admitting the step: ${String(err)}`)
     }
     return next()
   })

@@ -2,16 +2,15 @@
  * Unit: escalation tools — specs 8, 14, 27, 28, 52, 72, 81 (Gate 4e).
  *
  * Runs against the real Cordis host and the real dsh tools registry (same
- * setup as test/integration/bundle.spec.ts). State-advancing tools (14, 28)
- * are driven with distinct arguments because the shared content-addressed
- * cache replays the first output for identical args instead of advancing
- * service state twice (spec 19).
+ * setup as test/integration/bundle.spec.ts). State-advancing tools (14, 28, 72)
+ * are marked effectful: they bypass the content-addressed cache, so a repeated
+ * identical call re-executes and advances service state again (spec 19).
  */
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -39,7 +38,7 @@ async function setup(): Promise<Context> {
 async function call(ctx: Context, name: string, args: Record<string, unknown>): Promise<Envelope> {
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: 'c1',
+    callId: ToolCallId('c1'),
     name: `fable51.${name}`,
     arguments: args,
   })
@@ -145,9 +144,10 @@ describe('spec 14 — replan-budget', () => {
       assert.equal(ctx.fable51.replans, 3, 'each call must advance the service replan counter')
 
       const replay = await call(ctx, 'replan-budget', { replanCount: 3 })
-      assert.equal(replay.rerun, true)
-      assert.equal(replay.output.count, 3)
-      assert.equal(ctx.fable51.replans, 3, 'a cached rerun must not advance the counter again')
+      // Effectful: the old unconditional cache froze the budget at the first answer, so replans were never charged.
+      assert.equal(replay.rerun, false)
+      assert.equal(replay.output.count, 4)
+      assert.equal(ctx.fable51.replans, 4, 'every call must advance the service replan counter')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -200,13 +200,14 @@ describe('spec 28 — escalation-ladder', () => {
       assert.equal(ctx.fable51.rung, 1)
 
       const replay = await call(ctx, 'escalation-ladder', { failed: true })
-      assert.equal(replay.rerun, true)
-      assert.equal(replay.output.rung, 'retry')
-      assert.equal(ctx.fable51.rung, 1, 'identical args must replay the cache, not advance the ladder')
+      // Effectful: the old unconditional cache replayed rung 1 forever, so a repeat failure never escalated.
+      assert.equal(replay.rerun, false)
+      assert.equal(replay.output.rung, 'replan')
+      assert.equal(ctx.fable51.rung, 2, 'identical args must advance the ladder again, not replay it')
 
       const ok = await call(ctx, 'escalation-ladder', { failed: false })
-      assert.equal(ok.output.rung, 'replan', 'a success reads the current rung without advancing')
-      assert.equal(ctx.fable51.rung, 1)
+      assert.equal(ok.output.rung, 'downgrade', 'a success reads the current rung without advancing')
+      assert.equal(ctx.fable51.rung, 2)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -292,8 +293,10 @@ describe('spec 72 — pass-timeout', () => {
       assert.ok(entry.unverified.some((line) => line.includes('p1')), 'the unverified list must name the pass')
 
       const replay = await call(ctx, 'pass-timeout', { passId: 'p1', elapsedMs: 120_001 })
-      assert.equal(replay.rerun, true)
+      // Effectful: the old unconditional cache replayed the first answer, so a second breach was never recorded.
+      assert.equal(replay.rerun, false)
       assert.equal(replay.output.snapshotId, 'p1-timeout')
+      assert.equal(ctx.fable51.worklog.filter((w) => w.stage === 'pass:p1').length, 2, 'each breach must record its own worklog line')
     } finally {
       await ctx.fiber.dispose()
     }

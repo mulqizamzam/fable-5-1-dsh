@@ -26,7 +26,10 @@ function mergeOutputs(outputs: readonly Record<string, unknown>[]): Record<strin
     const right = fingerprint(b)
     return left < right ? -1 : left > right ? 1 : 0
   })
-  const merged: Record<string, unknown> = {}
+  // A null prototype keeps a caller-supplied `__proto__` an ordinary own key
+  // instead of an assignment that silently repoints the merged object's
+  // prototype and drops the key from the union spec 91 then fingerprints.
+  const merged: Record<string, unknown> = Object.create(null) as Record<string, unknown>
   for (const output of ordered) {
     for (const [key, value] of Object.entries(output)) merged[key] = value
   }
@@ -37,6 +40,7 @@ export function governanceTools(): ToolSpec[] {
   return [
     {
       spec: '13',
+      effectful: true,
       name: 'worklog-format',
       description: 'Record the final worklog line — stage, output, check, verdict, and the explicit unverified list (spec 13).',
       parameters: {
@@ -108,6 +112,9 @@ export function governanceTools(): ToolSpec[] {
           priorOutput?: unknown
           unverified?: string[]
         }
+        // A truthy non-boolean ('false', 0, {}) would ship an unverified final
+        // as the verified branch, which is the one outcome this tool exists to prevent.
+        if (typeof finalVerified !== 'boolean') throw new Error('finalVerified must be a boolean')
         if (finalVerified) return { shipped: 'final' }
         return { shipped: 'prior', priorOutput, unverified: unverified ?? [] }
       },
@@ -171,6 +178,11 @@ export function governanceTools(): ToolSpec[] {
       },
       execute(args, { service }) {
         const { anchor, output, epsilon } = args as { anchor: string; output: string; epsilon?: number }
+        // The threshold is both compared against and echoed into the declared
+        // number field, so a string epsilon would be coerced and returned as-is.
+        if (epsilon !== undefined && (typeof epsilon !== 'number' || !Number.isFinite(epsilon))) {
+          throw new Error('epsilon must be a finite number')
+        }
         const threshold = epsilon ?? service.config.reasoning.convergenceDelta
         const anchorWords = new Set(tokenize(anchor))
         const outputWords = new Set(tokenize(output))
@@ -183,6 +195,7 @@ export function governanceTools(): ToolSpec[] {
     },
     {
       spec: '94',
+      effectful: true,
       name: 'reasoning-garbage-collection',
       description: 'Collect reasoning passes no longer referenced, keeping live ancestry and the most recent N passes (spec 94).',
       parameters: {
@@ -203,6 +216,11 @@ export function governanceTools(): ToolSpec[] {
       },
       execute(args, { service }) {
         const { liveIds, keepLastN } = args as { liveIds: string[]; keepLastN: number }
+        // `Math.max(0, NaN)` is NaN and `slice(NaN)` is `slice(0)`, so an
+        // unvalidated keepLastN makes this destructive call empty the whole lineage.
+        if (typeof keepLastN !== 'number' || !Number.isFinite(keepLastN)) {
+          throw new Error('keepLastN must be a finite number')
+        }
         const dropped = service.lineage.gc(liveIds, keepLastN)
         return { dropped: [...dropped], kept: service.lineage.size() }
       },
@@ -264,6 +282,7 @@ export function governanceTools(): ToolSpec[] {
     },
     {
       spec: '99',
+      effectful: true,
       name: 'pass-migration',
       description: 'Migrate a pass to another model, verify its output is unchanged, and record a worklog line when the migration diverges (spec 99).',
       parameters: {

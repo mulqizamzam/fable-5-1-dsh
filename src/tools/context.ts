@@ -203,6 +203,7 @@ export function contextTools(): ToolSpec[] {
     },
     {
       spec: '22',
+      effectful: true,
       name: 'token-budget-per-stage',
       description: 'Account tokens against the per-stage budget; alert at 80%, hard-stop signal at 100% (spec 22).',
       parameters: {

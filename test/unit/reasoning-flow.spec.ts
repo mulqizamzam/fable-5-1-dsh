@@ -7,7 +7,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -23,7 +23,7 @@ async function setup() {
 }
 
 function execute(ctx: Context, name: string, args: unknown) {
-  return ctx.tools.execute({ signal: new AbortController().signal, callId: 'c1', name, arguments: args })
+  return ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('c1'), name, arguments: args })
 }
 
 type Envelope = { spec: string; output: Record<string, unknown>; rerun: boolean }
@@ -258,7 +258,13 @@ describe('reasoning-flow tools', () => {
     const ctx = await setup()
     try {
       const bad = await execute(ctx, 'fable51.reasoning-priority', { tasks: 'nope' })
-      assert.equal(bad.isError, true)
+      // defect guard: a malformed argument is a tool-level answer, never a throw the host reports as isError
+      assert.equal(bad.isError, false, 'a malformed argument must answer, not throw')
+      const rejected = bad.value as unknown as { ok: boolean; verdict: string; output: Record<string, unknown>; unverified: string[] }
+      assert.equal(rejected.ok, false)
+      assert.equal(rejected.verdict, 'unverified')
+      assert.ok(String(rejected.output.error).length > 0, 'the rejection must carry its reason in output.error')
+      assert.equal(rejected.unverified[0], rejected.output.error)
     } finally {
       await ctx.fiber.dispose()
     }

@@ -24,11 +24,19 @@ export class SnapshotStore {
   private readonly snapshots = new Map<string, Snapshot>()
   private order: string[] = []
 
+  /** Mirrors SNAPSHOT_CAP in policy-service.ts, which passes it explicitly. */
+  constructor(private readonly max = 256) {}
+
   create(id: string, data: Record<string, unknown>, at = Date.now()): Snapshot {
     const snapshot: Snapshot = { id, at, hash: fingerprint(data), data: Object.freeze({ ...data }) }
     this.snapshots.set(id, snapshot)
     this.order = this.order.filter((x) => x !== id)
     this.order.push(id)
+    // FIFO eviction: nothing ever removed an old checkpoint, so the store grew for the process lifetime.
+    while (this.order.length > this.max) {
+      const oldest = this.order.shift()
+      if (oldest !== undefined) this.snapshots.delete(oldest)
+    }
     return snapshot
   }
 

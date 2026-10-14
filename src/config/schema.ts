@@ -7,7 +7,7 @@
  */
 
 export interface Fable51Config {
-  /** Spec 1 — context thresholds. Ordered compactAt <= dropAt <= spillAt. */
+  /** Spec 1 — context thresholds. Strictly ordered compactAt < dropAt < spillAt. */
   context: {
     compactAt: number
     dropAt: number
@@ -103,22 +103,32 @@ function obj(value: unknown, path: string): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+// A typo'd safety key must fail loudly, never merge into nothing and read as active.
+function knownKeys(path: string, value: Record<string, unknown>, keys: readonly string[]): void {
+  for (const key of Object.keys(value)) {
+    if (!keys.includes(key)) fail(path, `unknown key ${key}; known keys are ${keys.join(', ')}`)
+  }
+}
+
 /**
  * Validate a raw config object against the schema, returning the typed config.
  * Throws ConfigError with the exact field path on the first violation.
  */
 export function validateConfig(raw: unknown): Fable51Config {
   const root = obj(raw, 'config')
+  knownKeys('config', root, ['context', 'effort', 'budget', 'reasoning', 'determinism', 'sandbox', 'hitl', 'observability', 'registry'])
   const context = obj(root.context, 'config.context')
+  knownKeys('config.context', context, ['compactAt', 'dropAt', 'spillAt', 'spillPath'])
   const compactAt = num(context.compactAt, 'config.context.compactAt', { min: 0.1, max: 0.99 })
   const dropAt = num(context.dropAt, 'config.context.dropAt', { min: 0.1, max: 0.99 })
   const spillAt = num(context.spillAt, 'config.context.spillAt', { min: 0.1, max: 0.99 })
-  if (!(compactAt <= dropAt && dropAt <= spillAt)) {
-    fail('config.context', `thresholds must be ordered compactAt(${compactAt}) <= dropAt(${dropAt}) <= spillAt(${spillAt})`)
+  if (!(compactAt < dropAt && dropAt < spillAt)) {
+    fail('config.context', `thresholds must be ordered compactAt(${compactAt}) < dropAt(${dropAt}) < spillAt(${spillAt})`)
   }
   const spillPath = str(context.spillPath, 'config.context.spillPath')
 
   const effort = obj(root.effort, 'config.effort')
+  knownKeys('config.effort', effort, ['defaultTier', 'escalateOn', 'costCeiling'])
   const defaultTier = str(effort.defaultTier, 'config.effort.defaultTier')
   if (!TIERS.has(defaultTier)) fail('config.effort.defaultTier', `must be one of ${[...TIERS].join('|')}`)
   if (!Array.isArray(effort.escalateOn)) fail('config.effort.escalateOn', 'expected an array')
@@ -128,6 +138,7 @@ export function validateConfig(raw: unknown): Fable51Config {
   const costCeiling = num(effort.costCeiling, 'config.effort.costCeiling', { min: 1 })
 
   const budget = obj(root.budget, 'config.budget')
+  knownKeys('config.budget', budget, ['maxReplans', 'maxPassRetries', 'passTimeoutMs', 'stageTimeoutMs', 'stageTokenBudget', 'maxForkDepth', 'maxForksPerStage', 'maxMergesPerStage'])
   const maxReplans = num(budget.maxReplans, 'config.budget.maxReplans', { min: 0, max: 10 })
   const maxPassRetries = num(budget.maxPassRetries, 'config.budget.maxPassRetries', { min: 0, max: 10 })
   const passTimeoutMs = num(budget.passTimeoutMs, 'config.budget.passTimeoutMs', { min: 1 })
@@ -138,6 +149,7 @@ export function validateConfig(raw: unknown): Fable51Config {
   const maxMergesPerStage = num(budget.maxMergesPerStage, 'config.budget.maxMergesPerStage', { min: 1, max: 1000 })
 
   const reasoning = obj(root.reasoning, 'config.reasoning')
+  knownKeys('config.reasoning', reasoning, ['maxConcurrentPasses', 'convergenceDelta', 'convergenceTurns', 'decayLambda', 'quorumThreshold'])
   const maxConcurrentPasses = num(reasoning.maxConcurrentPasses, 'config.reasoning.maxConcurrentPasses', { min: 1, max: 1000 })
   const convergenceDelta = num(reasoning.convergenceDelta, 'config.reasoning.convergenceDelta', { min: 0, max: 1 })
   const convergenceTurns = num(reasoning.convergenceTurns, 'config.reasoning.convergenceTurns', { min: 1, max: 1000 })
@@ -145,35 +157,51 @@ export function validateConfig(raw: unknown): Fable51Config {
   const quorumThreshold = num(reasoning.quorumThreshold, 'config.reasoning.quorumThreshold', { min: 0, max: 1 })
 
   const determinism = obj(root.determinism, 'config.determinism')
-  const seed = num(determinism.seed, 'config.determinism.seed')
+  knownKeys('config.determinism', determinism, ['seed', 'iterationOrder', 'pinnedVersions'])
+  const seed = num(determinism.seed, 'config.determinism.seed', { min: 0 })
+  if (!Number.isSafeInteger(seed)) fail('config.determinism.seed', 'expected a non-negative safe integer')
   const iterationOrder = str(determinism.iterationOrder, 'config.determinism.iterationOrder')
   if (iterationOrder !== 'stable' && iterationOrder !== 'sorted') fail('config.determinism.iterationOrder', "must be 'stable' or 'sorted'")
   if (typeof determinism.pinnedVersions !== 'object' || determinism.pinnedVersions === null || Array.isArray(determinism.pinnedVersions)) {
     fail('config.determinism.pinnedVersions', 'expected a record of version pins')
   }
+  for (const [key, pin] of Object.entries(determinism.pinnedVersions as Record<string, unknown>)) {
+    str(pin, `config.determinism.pinnedVersions.${key}`)
+  }
 
   const sandbox = obj(root.sandbox, 'config.sandbox')
+  knownKeys('config.sandbox', sandbox, ['allowList', 'escapeAction'])
   if (typeof sandbox.allowList !== 'object' || sandbox.allowList === null || Array.isArray(sandbox.allowList)) {
     fail('config.sandbox.allowList', 'expected a record of allow-lists')
+  }
+  for (const [key, paths] of Object.entries(sandbox.allowList as Record<string, unknown>)) {
+    if (!Array.isArray(paths)) fail(`config.sandbox.allowList.${key}`, 'expected an array of path strings')
+    for (const [i, path] of (paths as unknown[]).entries()) {
+      str(path, `config.sandbox.allowList.${key}[${i}]`)
+    }
   }
   const escapeAction = str(sandbox.escapeAction, 'config.sandbox.escapeAction')
   if (escapeAction !== 'abort' && escapeAction !== 'halt') fail('config.sandbox.escapeAction', "must be 'abort' or 'halt'")
 
   const hitl = obj(root.hitl, 'config.hitl')
+  knownKeys('config.hitl', hitl, ['requireOnIrreversible', 'requireOnExternal', 'requireAboveCost'])
   const requireOnIrreversible = bool(hitl.requireOnIrreversible, 'config.hitl.requireOnIrreversible')
   const requireOnExternal = bool(hitl.requireOnExternal, 'config.hitl.requireOnExternal')
   const requireAboveCost = num(hitl.requireAboveCost, 'config.hitl.requireAboveCost', { min: 0 })
 
   const observability = obj(root.observability, 'config.observability')
+  knownKeys('config.observability', observability, ['traceLevel', 'logFormat'])
   const traceLevel = str(observability.traceLevel, 'config.observability.traceLevel')
   if (!['stage', 'pass', 'both'].includes(traceLevel)) fail('config.observability.traceLevel', "must be 'stage'|'pass'|'both'")
   const logFormat = str(observability.logFormat, 'config.observability.logFormat')
   if (logFormat !== 'line' && logFormat !== 'json') fail('config.observability.logFormat', "must be 'line' or 'json'")
 
   const registry = obj(root.registry, 'config.registry')
+  knownKeys('config.registry', registry, ['policies'])
   if (!Array.isArray(registry.policies)) fail('config.registry.policies', 'expected an array')
   const policies = (registry.policies as unknown[]).map((item, i) => {
     const p = obj(item, `config.registry.policies[${i}]`)
+    knownKeys(`config.registry.policies[${i}]`, p, ['id', 'version', 'owner', 'active', 'hash'])
     return {
       id: str(p.id, `config.registry.policies[${i}].id`),
       version: str(p.version, `config.registry.policies[${i}].version`),

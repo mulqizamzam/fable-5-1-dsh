@@ -18,7 +18,7 @@ export interface ToolEnv {
 
 /** Uniform tool result: never void, always typed (PRD §3.3, spec 13). */
 export interface ToolResult<T = unknown> {
-  readonly ok: true
+  readonly ok: boolean
   readonly spec: string
   readonly output: T
   readonly verdict: 'verified' | 'unverified'
@@ -35,6 +35,11 @@ export interface ToolSpec<T = unknown> {
   readonly description: string
   readonly parameters: Record<string, unknown>
   readonly outputSchema: Record<string, unknown>
+  /**
+   * An effectful tool mutates service state: a cached answer would skip the
+   * mutation, so it never reads or writes the cache (spec 19 covers pure tools).
+   */
+  readonly effectful?: boolean
   /** Declarative gates; executed by the verification tool, never inline. */
   readonly gates?: readonly Gate[]
   execute(args: unknown, env: ToolEnv): Promise<unknown> | unknown
@@ -46,6 +51,27 @@ export function toolName(spec: ToolSpec): string {
 
 function renderText(value: unknown): string {
   return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : []
+}
+
+/**
+ * Envelope verdict rule: only a tool's own verification status can downgrade the
+ * envelope — a normal outcome (abort, escape, expiry, approval) is an answer,
+ * not an unproven claim, so it must not certify or de-certify the tool.
+ */
+function judge(spec: ToolSpec, output: unknown): { verdict: 'verified' | 'unverified'; unverified: string[] } {
+  const out = (typeof output === 'object' && output !== null ? output : {}) as Record<string, unknown>
+  const listed = [...stringList(out.missing), ...stringList(out.unverified)]
+  if (listed.length === 0 && out.verdict !== 'unverified' && out.pass !== false) {
+    return { verdict: 'verified', unverified: [] }
+  }
+  return {
+    verdict: 'unverified',
+    unverified: listed.length > 0 ? listed : [`${spec.name} (spec ${spec.spec}) returned an unverified result`],
+  }
 }
 
 export function defineTool<T>(spec: ToolSpec<T>, env: ToolEnv): ToolDefinition {
@@ -65,22 +91,44 @@ export function defineTool<T>(spec: ToolSpec<T>, env: ToolEnv): ToolDefinition {
       },
     },
     async execute(args: unknown, _exec: ToolRunContext): Promise<unknown> {
-      // spec 19/43: idempotency — same input hash + same spec + same policy hash
-      // replays the cached output instead of re-running.
-      const policyHash = env.service.config.registry.policies.length > 0
-        ? fingerprint(env.service.config.registry.policies)
-        : 'sha256:none'
-      const key = env.service.cache.key(args, spec.spec, policyHash)
-      const hit = env.service.cache.get(key)
-      const rerun = hit !== undefined
-      const output = rerun ? hit.output : await spec.execute(args, env)
-      if (!rerun) env.service.cache.set(key, output)
+      let output: unknown
+      let rerun = false
+      try {
+        if (spec.effectful === true) {
+          output = await spec.execute(args, env)
+        } else {
+          // spec 19/43: idempotency — same input hash + same spec + same config
+          // fingerprint replays the cached output instead of re-running.
+          const key = env.service.cache.key(args, spec.spec, fingerprint(env.service.config))
+          const hit = env.service.cache.get(key)
+          if (hit !== undefined) {
+            rerun = true
+            output = hit.output
+          } else {
+            output = await spec.execute(args, env)
+            env.service.cache.set(key, output)
+          }
+        }
+      } catch (error) {
+        // A malformed argument is a tool-level answer: the host must never see a throw.
+        const message = error instanceof Error ? error.message : String(error)
+        return {
+          ok: false,
+          spec: spec.spec,
+          output: { error: message },
+          verdict: 'unverified',
+          unverified: [message],
+          rerun: false,
+          gates,
+        }
+      }
+      const judged = judge(spec, output)
       const result: ToolResult = {
         ok: true,
         spec: spec.spec,
         output,
-        verdict: 'verified',
-        unverified: [],
+        verdict: judged.verdict,
+        unverified: judged.unverified,
         rerun,
         gates,
       }
@@ -100,13 +148,18 @@ export function numParam(description: string): Record<string, unknown> {
 
 /** Envelope schema wrapping a tool's inner output schema (spec 13 shape). */
 export function envelopeSchema(inner: Record<string, unknown> = {}): Record<string, unknown> {
+  // The host validates the returned envelope and rejects an unmatched shape, so a
+  // failed tool's {error} answer needs its own branch beside the inner schema.
+  const output = Object.keys(inner).length > 0
+    ? { oneOf: [inner, { type: 'object', required: ['error'], properties: { error: { type: 'string' } } }] }
+    : inner
   return {
     type: 'object',
     required: ['ok', 'spec', 'output', 'verdict', 'unverified', 'rerun', 'gates'],
     properties: {
-      ok: { type: 'boolean', enum: [true] },
+      ok: { type: 'boolean' },
       spec: { type: 'string' },
-      output: inner,
+      output,
       verdict: { type: 'string', enum: ['verified', 'unverified'] },
       unverified: { type: 'array', items: { type: 'string' } },
       rerun: { type: 'boolean' },

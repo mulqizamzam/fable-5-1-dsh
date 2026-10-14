@@ -16,7 +16,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -73,7 +73,7 @@ interface ToolOutcome {
 }
 
 async function dispatch(ctx: Context, name: string, args: Record<string, unknown>): Promise<ToolOutcome> {
-  const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: 'c1', name, arguments: args })
+  const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('c1'), name, arguments: args })
   return result as unknown as ToolOutcome
 }
 
@@ -83,6 +83,13 @@ async function run(ctx: Context, name: string, args: Record<string, unknown>): P
   return outcome.value
 }
 
+// specs 31/38/45 mutate service state, so they bypass the cache; the rest are pure.
+const EFFECTFUL = new Set([
+  'fable51.reasoning-forking',
+  'fable51.reasoning-checkpoint',
+  'fable51.merge-strategy',
+])
+
 async function runIdempotent(ctx: Context, name: string, args: Record<string, unknown>): Promise<Envelope> {
   const first = await run(ctx, name, args)
   assert.equal(first.ok, true, `${name} envelope must be ok`)
@@ -91,14 +98,29 @@ async function runIdempotent(ctx: Context, name: string, args: Record<string, un
   assert.deepEqual(first.gates, [], `${name} must declare no inline gates`)
   assert.equal(first.rerun, false, `${name} first call must not be a rerun (spec 19)`)
   const second = await run(ctx, name, args)
-  assert.equal(second.rerun, true, `${name} second call must replay the cache (spec 19)`)
+  if (EFFECTFUL.has(name)) {
+    // defect guard: a cache hit skipped spec.execute, so the repeat call mutated
+    // nothing and replayed the first answer forever
+    assert.equal(second.rerun, false, `${name} is effectful: the second call must re-execute, never replay the cache`)
+  } else {
+    assert.equal(second.rerun, true, `${name} second call must replay the cache (spec 19)`)
+  }
   assert.deepEqual(second.output, first.output, `${name} rerun must replay the same output`)
   return first
 }
 
 async function expectError(ctx: Context, name: string, args: Record<string, unknown>): Promise<void> {
   const outcome = await dispatch(ctx, name, args)
-  assert.equal(outcome.isError, true, `${name} must reject ${JSON.stringify(args)}`)
+  // defect guard: a malformed argument is a tool-level answer, never a throw the
+  // host reports as isError
+  assert.equal(outcome.isError, false, `${name} must answer, not throw, for ${JSON.stringify(args)}`)
+  const value = outcome.value
+  assert.equal(value?.ok, false, `${name} must reject ${JSON.stringify(args)}`)
+  assert.equal(value?.verdict, 'unverified', `${name} rejection must be unverified`)
+  const reason = value?.output?.error
+  assert.equal(typeof reason, 'string', `${name} rejection must carry output.error`)
+  assert.ok((reason as string).length > 0, `${name} rejection reason must not be empty`)
+  assert.equal(value?.unverified?.[0], reason, `${name} rejection reason must also be listed as unverified`)
 }
 
 describe('fable51 namespace', () => {
@@ -143,6 +165,7 @@ describe('spec 31 — reasoning-forking', () => {
       const fork = await runIdempotent(ctx, 'fable51.reasoning-forking', { candidateCount: 3, budgetLeft: 2 })
       assert.equal(fork.spec, '31')
       assert.equal(fork.output.decision, 'fork')
+      assert.equal(ctx.fable51.forksThisStage, 2, 'the repeated fork must consume the stage budget twice — a cache hit skipped recordFork')
       const merge = await run(ctx, 'fable51.reasoning-forking', { candidateCount: 3, budgetLeft: 0 })
       assert.equal(merge.output.decision, 'merge')
       const keep = await run(ctx, 'fable51.reasoning-forking', { candidateCount: 1, budgetLeft: 0 })
@@ -253,7 +276,13 @@ describe('spec 38 — reasoning-checkpoint', () => {
       assert.equal(snapshot?.hash, res.output.hash)
       assert.equal(snapshot?.hash, fingerprint({ turn: 2, note: 'boundary' }))
       assert.equal(ctx.fable51.snapshots.latest()?.id, 'p7')
-      assert.deepEqual(ctx.fable51.snapshots.ids(), ['p7'], 'the idempotent rerun must not create a second snapshot')
+      assert.deepEqual(ctx.fable51.snapshots.ids(), ['p7'], 'the snapshot store is keyed by id, so a repeat checkpoint replaces rather than appends')
+      // defect guard: a cache hit would replay p7 and leave the other pass newest,
+      // because the write never ran
+      await run(ctx, 'fable51.reasoning-checkpoint', { passId: 'p8', state: { turn: 3 } })
+      const rewritten = await run(ctx, 'fable51.reasoning-checkpoint', { passId: 'p7', state: { turn: 2, note: 'boundary' } })
+      assert.equal(rewritten.rerun, false, 'the repeated checkpoint must re-execute, not replay')
+      assert.equal(ctx.fable51.snapshots.latest()?.id, 'p7', 'the repeated checkpoint must really write p7 again — a replayed answer would leave p8 newest')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -411,6 +440,7 @@ describe('spec 45 — merge-strategy', () => {
       assert.equal(union.spec, '45')
       assert.deepEqual(union.output.merged, ['a', 'b', 'c'])
       assert.equal(union.output.strategy, 'union')
+      assert.equal(ctx.fable51.mergesThisStage, 2, 'the repeated merge must consume the stage budget twice — a cache hit skipped recordMerge')
       const intersection = await run(ctx, 'fable51.merge-strategy', { strategy: 'intersection', sets })
       assert.deepEqual(intersection.output.merged, ['b', 'c'])
       const weighted = await run(ctx, 'fable51.merge-strategy', { strategy: 'weighted', sets: [['a', 'b'], ['b', 'a']] })

@@ -10,7 +10,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -37,7 +37,7 @@ async function setup(): Promise<Context> {
 async function call(ctx: Context, name: string, args: Record<string, unknown>): Promise<{ isError: boolean; value?: Envelope; content?: unknown }> {
   const result = await ctx.tools.execute({
     signal: new AbortController().signal,
-    callId: `call-${name}-${Math.random().toString(36).slice(2)}`,
+    callId: ToolCallId(`call-${name}-${Math.random().toString(36).slice(2)}`),
     name: `fable51.${name}`,
     arguments: args,
   })
@@ -54,10 +54,18 @@ async function run(ctx: Context, name: string, args: Record<string, unknown>): P
 
 async function runFails(ctx: Context, name: string, args: Record<string, unknown>): Promise<string> {
   const result = await call(ctx, name, args)
-  assert.equal(result.isError, true, `fable51.${name} must reject ${JSON.stringify(args)}`)
-  const text = JSON.stringify(result.content)
-  assert.ok(text.length > 0, 'a rejected call must carry a reason')
-  return text
+  // A rejected argument is a tool-level answer now, never a host-level throw.
+  assert.equal(result.isError, false, `fable51.${name} must not surface a host-level tool error`)
+  const value = result.value
+  assert.ok(value, `fable51.${name} returned no envelope for ${JSON.stringify(args)}`)
+  assert.equal(value.ok, false, `fable51.${name} must reject ${JSON.stringify(args)}`)
+  assert.equal(value.verdict, 'unverified')
+  const { error } = value.output as { error?: unknown }
+  assert.equal(typeof error, 'string', 'a rejected call must carry a reason in output.error')
+  const message = error as string
+  assert.match(message, /\S/)
+  assert.deepEqual(value.unverified, [message], 'the envelope must name the failure as unverified')
+  return message
 }
 
 function order(value: Record<string, unknown>): string[] {
@@ -66,7 +74,7 @@ function order(value: Record<string, unknown>): string[] {
 
 describe('spec 17 — stage-graph-dag', () => {
   const nodes = ['a', 'b', 'c', 'd']
-  const edges = [['a', 'b'], ['a', 'c'], ['b', 'd'], ['c', 'd']]
+  const edges = [['a', 'b'], ['a', 'c'], ['b', 'd'], ['c', 'd']] as const
 
   it('topo-sorts a diamond DAG so every prerequisite precedes its stage', async () => {
     const ctx = await setup()
@@ -163,16 +171,16 @@ describe('spec 34 — reasoning-dag', () => {
     }
   })
 
-  it('is idempotent: a rerun replays without re-recording the pass', async () => {
+  it('re-runs on an identical call and the lineage still refuses the duplicate', async () => {
     const ctx = await setup()
     try {
       const first = await run(ctx, 'reasoning-dag', { passId: 'root', deps: [] })
       assert.equal(first.rerun, false)
       const before = ctx.fable51.lineage.size()
-      const second = await run(ctx, 'reasoning-dag', { passId: 'root', deps: [] })
-      assert.equal(second.rerun, true)
-      assert.deepEqual(second.output, first.output)
-      assert.equal(ctx.fable51.lineage.size(), before, 'a rerun must not double-record (spec 19)')
+      // Effectful: the old unconditional cache replayed the first answer, so the append-only guard was never reached.
+      const reason = await runFails(ctx, 'reasoning-dag', { passId: 'root', deps: [] })
+      assert.match(reason, /pass root is already recorded/)
+      assert.equal(ctx.fable51.lineage.size(), before, 'a rejected duplicate must not double-record (spec 19)')
     } finally {
       await ctx.fiber.dispose()
     }

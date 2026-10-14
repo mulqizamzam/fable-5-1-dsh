@@ -6,7 +6,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -22,7 +22,7 @@ async function setup() {
 }
 
 function execute(ctx: Context, name: string, args: unknown) {
-  return ctx.tools.execute({ signal: new AbortController().signal, callId: 'c1', name, arguments: args })
+  return ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('c1'), name, arguments: args })
 }
 
 type Envelope = { spec: string; output: Record<string, unknown>; rerun: boolean }

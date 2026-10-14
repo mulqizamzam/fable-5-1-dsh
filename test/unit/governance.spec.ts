@@ -104,9 +104,10 @@ describe('spec 13 — worklog-format', () => {
         verdict: 'contributed',
         unverified: ['schema drift'],
       })
-      assert.equal(second.rerun, true)
-      assert.deepEqual(second.output, first.output)
-      assert.equal(worklogAt(ctx, 'verify').length, 1, 'a rerun must not append a second worklog line')
+      assert.equal(second.rerun, false, 'worklog-format is effectful: a replayed call would hide a real event')
+      assert.equal(second.output.stage, first.output.stage)
+      assert.deepEqual(second.output.unverified, first.output.unverified)
+      assert.equal(worklogAt(ctx, 'verify').length, 2, 'each call records its own worklog line')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -282,8 +283,8 @@ describe('spec 94 — reasoning-garbage-collection', () => {
       assert.equal(result.output.kept, 3)
       assert.equal(ctx.fable51.lineage.get('z'), undefined)
       const replayed = await run(ctx, 'reasoning-garbage-collection', { liveIds: ['c'], keepLastN: 0 })
-      assert.equal(replayed.rerun, true)
-      assert.deepEqual(replayed.output.dropped, ['z'], 'a replayed gc must not drop a second time')
+      assert.equal(replayed.rerun, false, 'gc is effectful: each call re-evaluates the lineage instead of replaying')
+      assert.deepEqual(replayed.output.dropped, [], 'the second run has nothing left to drop')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -388,7 +389,7 @@ describe('spec 99 — pass-migration', () => {
         outputBefore: { answer: 'ship the prior output' },
         outputAfter: { answer: 'ship the prior output' },
       })
-      assert.equal(second.rerun, true)
+      assert.equal(second.rerun, false)
       assert.equal(second.output.divergence, false)
     } finally {
       await ctx.fiber.dispose()

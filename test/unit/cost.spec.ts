@@ -10,7 +10,7 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import LlmRuntime from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
@@ -40,7 +40,7 @@ interface Envelope {
 }
 
 async function exec(ctx: Context, name: string, args: Record<string, unknown>): Promise<Envelope> {
-  const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: 'c1', name, arguments: args })
+  const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('c1'), name, arguments: args })
   return result as unknown as Envelope
 }
 
@@ -158,22 +158,25 @@ describe('spec 95 — pass-cost-accounting', () => {
       assert.equal(res.value.output.risk, 1)
       const booked = ctx.fable51.costLedger.filter((e) => e.stage === 'pass:p1')
       assert.equal(booked.length, 1)
-      assert.equal(booked[0].latencyMs, 140)
-      assert.equal(booked[0].riskWeight, 1)
+      assert.equal(booked[0]!.latencyMs, 140)
+      assert.equal(booked[0]!.riskWeight, 1)
     } finally {
       await ctx.fiber.dispose()
     }
   })
 
-  it('is idempotent: a rerun does not double-book cost (spec 19)', async () => {
+  it('re-executes on an identical rerun and books the pass twice (spec 19)', async () => {
     const ctx = await setup()
     try {
       const args = { passId: 'p1', tokens: 5000, latencyMs: 100, retries: 1, verifierMs: 40 }
       const first = await exec(ctx, 'fable51.pass-cost-accounting', args)
       assert.equal(first.value.rerun, false)
-      const second = await exec(ctx, 'fable51.pass-cost-accounting', args)
-      assert.equal(second.value.rerun, true)
       assert.equal(ctx.fable51.costLedger.filter((e) => e.stage === 'pass:p1').length, 1)
+      const second = await exec(ctx, 'fable51.pass-cost-accounting', args)
+      // Effectful: the old unconditional cache replayed the first answer, so the second booking never happened.
+      assert.equal(second.value.rerun, false)
+      assert.equal(ctx.fable51.costLedger.filter((e) => e.stage === 'pass:p1').length, 2, 'each call must book its own ledger entry')
+      assert.deepEqual(second.value.output, { tokens: 10_000, latencyMs: 280, risk: 2 }, 'the running stage cost must include both bookings')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -204,13 +207,13 @@ describe('spec 97 — pass-sla', () => {
       assert.equal(res.value.output.action, 'log+degrade')
       const lines = ctx.fable51.worklog.filter((w) => w.stage === 'pass:sla-bad')
       assert.equal(lines.length, 1, 'a breach must record exactly one worklog line')
-      assert.ok(lines[0].unverified.includes('latency'), 'breach must be listed as unverified evidence')
+      assert.ok(lines[0]!.unverified.includes('latency'), 'breach must be listed as unverified evidence')
     } finally {
       await ctx.fiber.dispose()
     }
   })
 
-  it('honors per-target overrides and does not duplicate the worklog line on rerun (spec 19)', async () => {
+  it('honors per-target overrides and records a second breach line on an identical rerun', async () => {
     const ctx = await setup()
     try {
       const args = { passId: 'sla-acc', latencyMs: 100, tokens: 100, accuracy: 0.85, targets: { accuracy: 0.95 } }
@@ -219,8 +222,12 @@ describe('spec 97 — pass-sla', () => {
       assert.deepEqual(first.value.output.breaches, ['accuracy'])
       assert.equal(first.value.output.action, 'log+degrade')
       const second = await exec(ctx, 'fable51.pass-sla', args)
-      assert.equal(second.value.rerun, true)
-      assert.equal(ctx.fable51.worklog.filter((w) => w.stage === 'pass:sla-acc').length, 1)
+      // Effectful: the old unconditional cache replayed the first answer, so the second breach was never logged.
+      assert.equal(second.value.rerun, false)
+      assert.deepEqual(second.value.output.breaches, ['accuracy'])
+      const lines = ctx.fable51.worklog.filter((w) => w.stage === 'pass:sla-acc')
+      assert.equal(lines.length, 2, 'each breach must record its own worklog line')
+      assert.ok(lines.every((l) => l.unverified.includes('accuracy')), 'both lines must name the breached dimension')
     } finally {
       await ctx.fiber.dispose()
     }

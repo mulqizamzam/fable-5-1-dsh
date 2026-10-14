@@ -24,6 +24,7 @@ export function opsTools(): ToolSpec[] {
   return [
     {
       spec: '21',
+      effectful: true,
       name: 'timeboxing',
       description: 'Enforce the per-stage wall-clock timebox; on expiry snapshot the stage, mark the result UNVERIFIED, and record a discarded worklog line (spec 21).',
       parameters: {
@@ -45,6 +46,11 @@ export function opsTools(): ToolSpec[] {
       },
       execute(args, { service }) {
         const { stage, elapsedMs } = args as { stage: string; elapsedMs: number }
+        // elapsedMs is compared against the deadline and echoed into the declared
+        // number field; a string would coerce into a bogus verdict and be returned as a string.
+        if (typeof elapsedMs !== 'number' || !Number.isFinite(elapsedMs)) {
+          throw new Error('elapsedMs must be a finite number')
+        }
         const deadline = service.config.budget.stageTimeoutMs
         if (elapsedMs < deadline) return { expired: false, elapsedMs }
         const snapshot = service.snapshots.create(`${stage}-timebox`, { stage, elapsedMs, verdict: 'unverified' })
@@ -61,6 +67,7 @@ export function opsTools(): ToolSpec[] {
     },
     {
       spec: '23',
+      effectful: true,
       name: 'conflict-resolution',
       description: 'Resolve conflicting inputs by fixed precedence spec > contract > subagent > memory; the highest-precedence source wins and the decision is logged (spec 23).',
       parameters: {
@@ -115,6 +122,7 @@ export function opsTools(): ToolSpec[] {
     },
     {
       spec: '24',
+      effectful: true,
       name: 'observability',
       description: 'Emit a one-line per-stage trace carrying the trace id, stage, tokens, and verdict, and record it to the worklog (spec 24).',
       parameters: {
@@ -180,8 +188,9 @@ export function opsTools(): ToolSpec[] {
     },
     {
       spec: '26',
+      effectful: true,
       name: 'sandbox-boundaries',
-      description: 'Check a path against the operation allow-list; an empty list allows reads and denies writes, and any escape is logged with the configured escape action (spec 26).',
+      description: 'Check a path against the operation allow-list; an empty list allows reads and denies writes, and any escape is logged and aborted when the escape action is abort (spec 26).',
       parameters: {
         type: 'object',
         required: ['path', 'operation'],
@@ -202,6 +211,9 @@ export function opsTools(): ToolSpec[] {
       execute(args, { service }) {
         const { path, operation } = args as { path: string; operation: 'read' | 'write' }
         const list = service.config.sandbox.allowList[operation] ?? []
+        // A DECLARED allow-list is fail-closed exact matching, so traversal, NUL and
+        // case spellings all deny. An UNSET one is the read-open/write-closed default —
+        // stated here rather than falling out of the empty-array branch.
         const allowed = list.length === 0 ? operation === 'read' : list.includes(path)
         const action = service.config.sandbox.escapeAction
         if (!allowed) {
@@ -213,6 +225,11 @@ export function opsTools(): ToolSpec[] {
             unverified: [`sandbox escape attempt: ${operation} ${path}`],
             at: Date.now(),
           })
+          // An abort action is enforcement, not a report: returning the escape
+          // object here would let the caller treat a denied path as a completed check.
+          if (action === 'abort') {
+            throw new Error(`sandbox escape: ${operation} on ${path} is outside the declared allow-list`)
+          }
         }
         return { allowed, escape: !allowed, action }
       },
@@ -247,6 +264,7 @@ export function opsTools(): ToolSpec[] {
     },
     {
       spec: '30',
+      effectful: true,
       name: 'postmortem-format',
       description: 'Record a postmortem in what-failed / why / fix / catching-test form to the worklog (spec 30).',
       parameters: {

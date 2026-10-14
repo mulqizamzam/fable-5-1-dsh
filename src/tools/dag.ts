@@ -169,6 +169,7 @@ export function dagTools(): ToolSpec[] {
     },
     {
       spec: '34',
+      effectful: true,
       name: 'reasoning-dag',
       description: 'Record a reasoning pass with its dependency edges into the pass lineage and report its ancestor chain (spec 34).',
       parameters: {
