@@ -1,5 +1,5 @@
 /**
- * agent/pre-step hook — specs 1, 3, 4, 6, 14, 21, 22, 24, 37, 71, 72
+ * agent/pre-step hook, specs 1, 3, 4, 6, 14, 21, 22, 24, 37, 71, 72
  * (plus the clarification risk signal for spec 8).
  *
  * Verified contract: `agent/pre-step` is a WATERFALL. The payload is
@@ -47,7 +47,7 @@ export function wireAgentPreStep(ctx: Context): void {
       const episode = svc.episode(key)
       const turn = typeof payload.turn === 'number' ? payload.turn : 0
 
-      // spec 4: a stage transition is a new turn — the run moved to another
+      // spec 4: a stage transition is a new turn, the run moved to another
       // unit of work. A step inside the same turn is not a transition, and
       // narrating every step is the spam this spec exists to kill.
       const transition = episode.lastObservedTurn !== turn
@@ -66,7 +66,7 @@ export function wireAgentPreStep(ctx: Context): void {
           at: Date.now(),
         })
       }
-      // spec 6: pre-first-tool effort escalation — a search/multi-hop/ambiguity
+      // spec 6: pre-first-tool effort escalation, a search/multi-hop/ambiguity
       // signal in the step's messages raises the effort tier one rung.
       const messages = Array.isArray(payload.messages) ? payload.messages : []
       const text = messages.map(messageText).join(' ')
@@ -90,7 +90,7 @@ export function wireAgentPreStep(ctx: Context): void {
         }
       }
 
-      // spec 4: narrate what the operator needs — the run moved, or a gate
+      // spec 4: narrate what the operator needs, the run moved, or a gate
       // failed. Nothing else earns a line.
       if (transition) {
         svc.recordProgress(key, 'stage-transition', `turn ${turn} started`)

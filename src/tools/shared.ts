@@ -70,7 +70,7 @@ function stringList(value: unknown): string[] {
 
 /**
  * Envelope verdict rule: only a tool's own verification status can downgrade the
- * envelope — a normal outcome (abort, escape, expiry, approval) is an answer,
+ * envelope, a normal outcome (abort, escape, expiry, approval) is an answer,
  * not an unproven claim, so it must not certify or de-certify the tool.
  */
 function judge(spec: ToolSpec, output: unknown): { verdict: 'verified' | 'unverified'; unverified: string[] } {
@@ -93,7 +93,7 @@ export function defineTool<T>(spec: ToolSpec<T>, env: ToolEnv): ToolDefinition {
     description: spec.description,
     parameters: spec.parameters,
     output: {
-      // The registry validates the RETURNED value — the envelope — so the
+      // The registry validates the RETURNED value, the envelope, so the
       // declared schema wraps spec.outputSchema (which describes the inner
       // output) inside the envelope's properties.
       schema: envelopeSchema(spec.outputSchema),
@@ -111,7 +111,7 @@ export function defineTool<T>(spec: ToolSpec<T>, env: ToolEnv): ToolDefinition {
         if (spec.effectful === true) {
           output = await spec.execute(args, callEnv)
         } else {
-          // spec 19/43: idempotency — same input hash + same spec + same config
+          // spec 19/43: idempotency, same input hash + same spec + same config
           // fingerprint replays the cached output instead of re-running.
           const key = env.service.cache.key(args, spec.spec, fingerprint(env.service.config))
           const hit = env.service.cache.get(key)

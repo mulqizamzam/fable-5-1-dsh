@@ -1,5 +1,5 @@
 /**
- * Unit: specs 4 and 55 — progress reporting and reasoning bandwidth.
+ * Unit: specs 4 and 55, progress reporting and reasoning bandwidth.
  *
  * spec 4: the bundle narrates a stage transition and a gate failure, and
  * nothing else. A line per step is the narration spam the spec kills.
@@ -45,7 +45,7 @@ function progressLines(ctx: Context): string[] {
   return ctx.fable51.worklog.filter((entry) => entry.check === 'progress record').map((entry) => entry.output)
 }
 
-describe('spec 4 — progress reporting', () => {
+describe('spec 4, progress reporting', () => {
   it('narrates a stage transition once per turn, not once per step', async () => {
     const ctx = await setup()
     try {
@@ -155,7 +155,7 @@ describe('spec 4 — progress reporting', () => {
   })
 })
 
-describe('spec 55 — reasoning bandwidth', () => {
+describe('spec 55, reasoning bandwidth', () => {
   /** A tool that blocks until the test lets it go, so calls really overlap. */
   function registerBlockingTool(ctx: Context, gate: Promise<void>): void {
     ctx.tools.register({
@@ -227,7 +227,7 @@ describe('spec 55 — reasoning bandwidth', () => {
     }
   })
 
-  it('does not make a nested call wait for a slot — that would deadlock', async () => {
+  it('does not make a nested call wait for a slot, that would deadlock', async () => {
     const ctx = await setup({ reasoning: { maxConcurrentPasses: 1 } })
     try {
       // A nested call is part of a pass already running: it takes no slot.

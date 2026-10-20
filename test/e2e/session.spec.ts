@@ -1,5 +1,5 @@
 /**
- * E2E: one synthetic agent session exercising the PRD's §8 requirement —
+ * E2E: one synthetic agent session exercising the PRD's §8 requirement,
  * context compaction, verification-gate fail + rollback, reasoning fork +
  * merge (lineage), cost accounting, escalation, handoff + resume, and the
  * worklog/provenance/unverified-list emissions (specs 13, 7, 20).
@@ -31,7 +31,7 @@ function execute(ctx: Context, name: string, args: unknown) {
   return ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('e2e'), name, arguments: args })
 }
 
-describe('Gate 6 — synthetic session end-to-end', () => {
+describe('Gate 6, synthetic session end-to-end', () => {
   it('runs the representative task: overflow → compact → verify → fork → merge → deliver', async () => {
     const ctx = await setup()
     try {

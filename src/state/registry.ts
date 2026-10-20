@@ -22,7 +22,7 @@ export class PolicyRegistry {
     }
     const versions = this.records.get(policy.id) ?? []
     if (versions.some((v) => v.version === policy.version)) {
-      throw new Error(`policy ${policy.id}@${policy.version} already exists — mutation is forbidden, register a new version`)
+      throw new Error(`policy ${policy.id}@${policy.version} already exists, mutation is forbidden, register a new version`)
     }
     // Store a frozen copy: the service hands over a live reference into
     // config.registry.policies, and a registered policy is immutable (spec 100).

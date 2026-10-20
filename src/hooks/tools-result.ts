@@ -1,5 +1,5 @@
 /**
- * tools/result hook — specs 5, 7, 12, 13, 47, 58.
+ * tools/result hook, specs 5, 7, 12, 13, 47, 58.
  *
  * Verified contract: `tools/result` is EMIT-mode with payload
  * `(exec, result)`. Observers cannot rewrite the result; this hook tags
@@ -18,8 +18,8 @@ export function wireToolsResult(ctx: Context): void {
   ctx.on('tools/result', (exec: { name?: string; arguments?: unknown }, result: Readonly<ResultLike>) => {
     const svc = ctx.fable51 as Fable51Policy
     // spec 55: the parallel-pass slot the call held is free again. The
-    // registry reports a result for every dispatched call — including one
-    // another gate refused — so the slot is released exactly once, by
+    // registry reports a result for every dispatched call, including one
+    // another gate refused, so the slot is released exactly once, by
     // whoever held it.
     svc.releaseHeldSlot(exec)
     const text = (result.content ?? [])
@@ -37,7 +37,7 @@ export function wireToolsResult(ctx: Context): void {
       unverified: verified ? [] : ['tool result carried no verifiable evidence'],
       at: Date.now(),
     })
-    // spec 58: a verified tool result is new evidence — it blocks convergence.
+    // spec 58: a verified tool result is new evidence, it blocks convergence.
     // The evidence belongs to the session that produced it.
     if (verified) svc.markEvidence(sessionKeyFromExec(exec))
     // spec 95: coarse cost accounting per tool call.

@@ -1,5 +1,5 @@
 /**
- * Verification tools — specs 5, 7, 12, 16, 19, 36, 47, 48, 70 (Gate 4b).
+ * Verification tools, specs 5, 7, 12, 16, 19, 36, 47, 48, 70 (Gate 4b).
  *
  * Same contract as context.ts: typed envelope via defineTool, idempotent by
  * construction, side effects only through the policy service.
@@ -60,7 +60,7 @@ export function verificationTools(): ToolSpec[] {
       execute(args, { service, sessionKey }): GateResult {
         const record = asRecord(args)
         // Fail-loud: a gate that can fail cannot be recorded from missing
-        // fields — undefined === undefined must never read as a pass (spec 5).
+        // fields, undefined === undefined must never read as a pass (spec 5).
         const check = requireNonEmptyString(record.check, 'check')
         const cmd = requireNonEmptyString(record.cmd, 'cmd')
         const expected = requireNonEmptyString(record.expected, 'expected')

@@ -1,5 +1,5 @@
 /**
- * Visualization tools — spec 100 (policy registry) + state inspection.
+ * Visualization tools, spec 100 (policy registry) + state inspection.
  *
  * Read-only tools that render service state for debugging and observability.
  * No mutation, no cache side effects.

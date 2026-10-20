@@ -1,5 +1,5 @@
 /**
- * Unit: escalation tools — specs 8, 14, 27, 28, 52, 72, 81 (Gate 4e).
+ * Unit: escalation tools, specs 8, 14, 27, 28, 52, 72, 81 (Gate 4e).
  *
  * Runs against the real Cordis host and the real dsh tools registry (same
  * setup as test/integration/bundle.spec.ts). State-advancing tools (14, 28, 72)
@@ -47,7 +47,7 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>): 
   return (result as unknown as { value: Envelope }).value
 }
 
-describe('escalation group — namespace', () => {
+describe('escalation group, namespace', () => {
   it('registers all seven escalation tools under the fable51 namespace', async () => {
     const ctx = await setup()
     try {
@@ -73,7 +73,7 @@ describe('escalation group — namespace', () => {
   })
 })
 
-describe('spec 8 — spec-clarification', () => {
+describe('spec 8, spec-clarification', () => {
   it('proceeds on a single reading and halts on two or more readings', async () => {
     const ctx = await setup()
     try {
@@ -122,7 +122,7 @@ describe('spec 8 — spec-clarification', () => {
   })
 })
 
-describe('spec 14 — replan-budget', () => {
+describe('spec 14, replan-budget', () => {
   it('allows replans up to the budget, escalates on the third, and advances the service counter', async () => {
     const ctx = await setup()
     try {
@@ -155,7 +155,7 @@ describe('spec 14 — replan-budget', () => {
   })
 })
 
-describe('spec 27 — human-in-the-loop', () => {
+describe('spec 27, human-in-the-loop', () => {
   it('requires approval for irreversible, external, or over-ceiling actions only', async () => {
     const ctx = await setup()
     try {
@@ -189,7 +189,7 @@ describe('spec 27 — human-in-the-loop', () => {
   })
 })
 
-describe('spec 28 — escalation-ladder', () => {
+describe('spec 28, escalation-ladder', () => {
   it('advances exactly one rung per failure and never on a cached rerun', async () => {
     const ctx = await setup()
     try {
@@ -234,7 +234,7 @@ describe('spec 28 — escalation-ladder', () => {
   })
 })
 
-describe('spec 52 — abort-criteria', () => {
+describe('spec 52, abort-criteria', () => {
   it('aborts on budget overrun or contradiction and proceeds on convergence', async () => {
     const ctx = await setup()
     try {
@@ -264,7 +264,7 @@ describe('spec 52 — abort-criteria', () => {
   })
 })
 
-describe('spec 72 — pass-timeout', () => {
+describe('spec 72, pass-timeout', () => {
   it('passes within the deadline and snapshots an unverified verdict on breach', async () => {
     const ctx = await setup()
     try {
@@ -304,7 +304,7 @@ describe('spec 72 — pass-timeout', () => {
   })
 })
 
-describe('spec 81 — pass-retry-policy', () => {
+describe('spec 81, pass-retry-policy', () => {
   it('retries twice with exponential backoff and aborts the third attempt', async () => {
     const ctx = await setup()
     try {

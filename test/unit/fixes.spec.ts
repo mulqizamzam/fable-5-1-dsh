@@ -34,7 +34,7 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>) {
   })
 }
 
-describe('BUG 1 — spec 39 contradiction-detection must compare canonically', () => {
+describe('BUG 1, spec 39 contradiction-detection must compare canonically', () => {
   it('does not report a contradiction for equal content with different key order', async () => {
     const ctx = await setup()
     try {
@@ -69,7 +69,7 @@ describe('BUG 1 — spec 39 contradiction-detection must compare canonically', (
   })
 })
 
-describe('BUG 2 — spec 70 speculative-verify must compare canonically', () => {
+describe('BUG 2, spec 70 speculative-verify must compare canonically', () => {
   it('verifies a matching partial artifact regardless of key order', async () => {
     const ctx = await setup()
     try {
@@ -87,7 +87,7 @@ describe('BUG 2 — spec 70 speculative-verify must compare canonically', () => 
   })
 })
 
-describe('BUG 3 — spec 5 verification-gates must be fail-loud, not forgeable', () => {
+describe('BUG 3, spec 5 verification-gates must be fail-loud, not forgeable', () => {
   it('rejects missing fields instead of recording a passing gate', async () => {
     const ctx = await setup()
     try {
@@ -121,7 +121,7 @@ describe('BUG 3 — spec 5 verification-gates must be fail-loud, not forgeable',
   })
 })
 
-describe('BUG 4 — spec 14 replan-budget verdict must come from accounted state', () => {
+describe('BUG 4, spec 14 replan-budget verdict must come from accounted state', () => {
   it('escalates on the service counter even when the caller under-reports', async () => {
     const ctx = await setup()
     try {
@@ -138,7 +138,7 @@ describe('BUG 4 — spec 14 replan-budget verdict must come from accounted state
   })
 })
 
-describe('BUG 5 — policy registry must order versions numerically, not lexicographically', () => {
+describe('BUG 5, policy registry must order versions numerically, not lexicographically', () => {
   it('sorts 1.10.0 after 1.9.0', () => {
     const registry = new PolicyRegistry()
     registry.register({ id: 'p', version: '1.9.0', owner: 'o', active: false, hash: 'h1' })
@@ -156,7 +156,7 @@ describe('BUG 5 — policy registry must order versions numerically, not lexicog
   })
 })
 
-describe('GAP 1 — spec 6 effort-escalation on search/multihop signals', () => {
+describe('GAP 1, spec 6 effort-escalation on search/multihop signals', () => {
   it('escalates the effort tier when the pre-step message carries an escalation signal', async () => {
     const ctx = await setup()
     try {
@@ -175,7 +175,7 @@ describe('GAP 1 — spec 6 effort-escalation on search/multihop signals', () => 
   })
 })
 
-describe('GAP 2 — spec 15 pass labeling: parallel, sequential, interleaved are distinct', () => {
+describe('GAP 2, spec 15 pass labeling: parallel, sequential, interleaved are distinct', () => {
   it('labels a multi-dependency pass parallel and a single-dependency pass sequential', async () => {
     const ctx = await setup()
     try {
@@ -206,7 +206,7 @@ describe('GAP 2 — spec 15 pass labeling: parallel, sequential, interleaved are
   })
 })
 
-describe('GAP 3 — spec 58 convergence: small deltas for N turns AND no new evidence', () => {
+describe('GAP 3, spec 58 convergence: small deltas for N turns AND no new evidence', () => {
   it('converges only after stable turns with no new evidence', async () => {
     const ctx = await setup()
     try {
@@ -233,13 +233,13 @@ describe('GAP 3 — spec 58 convergence: small deltas for N turns AND no new evi
   })
 })
 
-describe('GAP 4 — spec 96 fork/merge budget is consumed per stage', () => {
+describe('GAP 4, spec 96 fork/merge budget is consumed per stage', () => {
   it('falls back to merge once the per-stage fork budget is spent', async () => {
     const ctx = await setup()
     try {
       const max = ctx.fable51.config.budget.maxForksPerStage
       // Distinct args per call: identical args replay the cached first output
-      // instead of re-executing (spec 19 idempotency) — same convention as the
+      // instead of re-executing (spec 19 idempotency), same convention as the
       // escalation suite's state-advancing tools.
       for (let i = 0; i < max; i += 1) {
         const res = await call(ctx, 'reasoning-forking', { candidateCount: 2, budgetLeft: 999, attempt: i })
@@ -253,7 +253,7 @@ describe('GAP 4 — spec 96 fork/merge budget is consumed per stage', () => {
   })
 })
 
-describe('GAP 5 — specs 10/18 handoff + rollback to the last verified checkpoint', () => {
+describe('GAP 5, specs 10/18 handoff + rollback to the last verified checkpoint', () => {
   it('writes a handoff snapshot with stage map and last hash on session disposal', async () => {
     const ctx = await setup()
     try {
@@ -285,7 +285,7 @@ describe('GAP 5 — specs 10/18 handoff + rollback to the last verified checkpoi
   })
 })
 
-describe('GAP 6 — spec 3 tool-call-batching partitions by dependency', () => {
+describe('GAP 6, spec 3 tool-call-batching partitions by dependency', () => {
   it('batches independent calls and serializes dependent ones', async () => {
     const ctx = await setup()
     try {
@@ -317,7 +317,7 @@ describe('GAP 6 — spec 3 tool-call-batching partitions by dependency', () => {
       assert.equal(res.isError, false, 'a cycle is an answer, not a host throw')
       const out = (res as unknown as { value: { ok: boolean; output: { error: string } } }).value
       assert.equal(out.ok, false, 'a dependency cycle must not batch')
-      // guard: the cycle still throws inside execute — the factory turns it into ok:false (spec 3)
+      // guard: the cycle still throws inside execute, the factory turns it into ok:false (spec 3)
       assert.equal(out.output.error, 'calls cannot batch: dependency cycle among a, b')
     } finally {
       await ctx.fiber.dispose()

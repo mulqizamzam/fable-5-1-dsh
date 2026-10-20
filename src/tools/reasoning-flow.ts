@@ -1,5 +1,5 @@
 /**
- * Reasoning-flow tools — specs 51, 53, 54, 56, 57, 59, 61–69, 71
+ * Reasoning-flow tools, specs 51, 53, 54, 56, 57, 59, 61–69, 71
  * (PRD §4.5/§4.6, Gates 4g–4n).
  *
  * The scheduling and topology half of the reasoning group: priority order,

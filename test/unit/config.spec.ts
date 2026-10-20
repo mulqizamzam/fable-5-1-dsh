@@ -1,6 +1,6 @@
 /**
  * Unit: fail-loud config validation (Gate 2). Bad config must throw with the
- * exact field path — no silent defaults, no silent fallback.
+ * exact field path, no silent defaults, no silent fallback.
  */
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
@@ -11,7 +11,7 @@ function validPatch(): Record<string, unknown> {
   return {}
 }
 
-describe('Gate 2 — config validation', () => {
+describe('Gate 2, config validation', () => {
   it('defaults validate cleanly', () => {
     const config = validateConfig(defaults())
     assert.equal(config.context.compactAt, 0.7)

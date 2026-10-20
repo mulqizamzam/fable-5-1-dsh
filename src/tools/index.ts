@@ -1,7 +1,7 @@
 /**
  * Tool group registry (PRD §2/§6 Phase 4).
  *
- * Order matters: groups are registered in dependency order — context first,
+ * Order matters: groups are registered in dependency order, context first,
  * governance last. Each group module is self-contained and owns its file;
  * this registry is the only wiring point.
  */

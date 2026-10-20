@@ -1,5 +1,5 @@
 /**
- * Unit: bundle state modules — registry immutability (100), lineage + GC
+ * Unit: bundle state modules, registry immutability (100), lineage + GC
  * (69/87/94), cache fingerprinting (43/65), snapshot diff (38/46/77/83).
  */
 import { describe, it } from 'node:test'

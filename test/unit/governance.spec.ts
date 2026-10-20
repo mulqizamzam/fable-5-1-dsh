@@ -1,5 +1,5 @@
 /**
- * Unit: governance tools — specs 13, 20, 91, 92, 94, 98, 99 (Gate 4o).
+ * Unit: governance tools, specs 13, 20, 91, 92, 94, 98, 99 (Gate 4o).
  *
  * Runs against a real Cordis host with the real dsh tool registry, so the
  * envelope, idempotency, and namespace guarantees are the registry's, not a
@@ -30,8 +30,8 @@ interface Envelope {
 async function setup() {
   const ctx = new Context()
   // Fable51Policy injects ['tools', 'llm', 'sessions']: a host missing llm or
-  // sessions leaves the service PENDING, so its constructor — which registers
-  // every tool — never runs. Load the full host from bundle.spec.ts instead.
+  // sessions leaves the service PENDING, so its constructor, which registers
+  // every tool, never runs. Load the full host from bundle.spec.ts instead.
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(LlmRuntime)
@@ -75,7 +75,7 @@ function worklogAt(ctx: Context, stage: string): readonly (typeof ctx.fable51.wo
   return ctx.fable51.worklog.filter((entry) => entry.stage === stage)
 }
 
-describe('spec 13 — worklog-format', () => {
+describe('spec 13, worklog-format', () => {
   it('records the stage/output/check/verdict/unverified entry and echoes it', async () => {
     const ctx = await setup()
     try {
@@ -129,7 +129,7 @@ describe('spec 13 — worklog-format', () => {
   })
 })
 
-describe('spec 20 — partial-delivery', () => {
+describe('spec 20, partial-delivery', () => {
   it('ships the final output only when it is verified', async () => {
     const ctx = await setup()
     try {
@@ -164,7 +164,7 @@ describe('spec 20 — partial-delivery', () => {
   })
 })
 
-describe('spec 91 — pass-merge-idempotency', () => {
+describe('spec 91, pass-merge-idempotency', () => {
   it('merges the union of keys, independent of input order', async () => {
     const ctx = await setup()
     try {
@@ -214,7 +214,7 @@ describe('spec 91 — pass-merge-idempotency', () => {
   })
 })
 
-describe('spec 92 — reasoning-drift-detection', () => {
+describe('spec 92, reasoning-drift-detection', () => {
   it('reports no drift when the output matches the anchor', async () => {
     const ctx = await setup()
     try {
@@ -268,7 +268,7 @@ describe('spec 92 — reasoning-drift-detection', () => {
   })
 })
 
-describe('spec 94 — reasoning-garbage-collection', () => {
+describe('spec 94, reasoning-garbage-collection', () => {
   it('drops passes no live id or keepLastN retains', async () => {
     const ctx = await setup()
     try {
@@ -306,7 +306,7 @@ describe('spec 94 — reasoning-garbage-collection', () => {
   })
 })
 
-describe('spec 98 — reasoning-ab-test', () => {
+describe('spec 98, reasoning-ab-test', () => {
   it('picks the higher score even when it costs more', async () => {
     const ctx = await setup()
     try {
@@ -361,7 +361,7 @@ describe('spec 98 — reasoning-ab-test', () => {
   })
 })
 
-describe('spec 99 — pass-migration', () => {
+describe('spec 99, pass-migration', () => {
   it('reports no divergence and logs nothing when the output survives migration', async () => {
     const ctx = await setup()
     try {

@@ -1,5 +1,5 @@
 /**
- * Budget Advisor tool — spec 11 (cost-accuracy-tradeoff) + spec 60 (reasoning-cost-model).
+ * Budget Advisor tool: spec 11 (cost-accuracy-tradeoff) + spec 60 (reasoning-cost-model).
  *
  * Analyzes historical cost ledger to recommend stageTokenBudget, maxForkDepth, effortTier
  * for a given task class. Pure heuristics: quantiles of observed costs per task class.

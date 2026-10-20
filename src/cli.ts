@@ -1,5 +1,5 @@
 /**
- * fable51 CLI — Policy Visualizer & Budget Advisor.
+ * fable51 CLI: Policy Visualizer & Budget Advisor.
  *
  * Compiled to lib/cli.js by the main build so the published package ships a
  * working `fable51` binary: bin/fable51.js is a thin shim onto this module.

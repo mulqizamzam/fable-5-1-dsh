@@ -1,5 +1,5 @@
 /**
- * Unit: defect twins — every test here FAILS on the pre-fix code and passes
+ * Unit: defect twins, every test here FAILS on the pre-fix code and passes
  * after. Each encodes the exact reproducer observed against the live bundle.
  *
  * Context: the plugin was already installed and firing on every agent turn

@@ -1,5 +1,5 @@
 /**
- * Unit: the verification tool group — specs 5, 7, 12, 16, 19, 36, 47, 48, 70
+ * Unit: the verification tool group, specs 5, 7, 12, 16, 19, 36, 47, 48, 70
  * (Gate 4b) against a real Cordis host and the real tool registry.
  *
  * Every assertion runs through ctx.tools.execute, so the envelope shape, the
@@ -47,7 +47,7 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>): 
   return (result as { value: unknown }).value as Envelope
 }
 
-describe('verification tools — registry surface', () => {
+describe('verification tools, registry surface', () => {
   it('registers every verification tool under the fable51 namespace', async () => {
     const ctx = await setup()
     try {
@@ -72,7 +72,7 @@ describe('verification tools — registry surface', () => {
   })
 })
 
-describe('spec 5 — verification-gates', () => {
+describe('spec 5, verification-gates', () => {
   const args = { check: 'tests', cmd: 'node --test', expected: 'pass', actual: 'pass' }
 
   it('records a passing gate in the gate log and records it again on rerun', async () => {
@@ -119,7 +119,7 @@ describe('spec 5 — verification-gates', () => {
   })
 })
 
-describe('spec 7 — research-provenance', () => {
+describe('spec 7, research-provenance', () => {
   it('tags a fetched claim, replays on rerun, and keeps memory and inference apart', async () => {
     const ctx = await setup()
     try {
@@ -143,7 +143,7 @@ describe('spec 7 — research-provenance', () => {
   })
 })
 
-describe('spec 12 — anti-introspection', () => {
+describe('spec 12, anti-introspection', () => {
   it('certifies "verified" only when artifact, command, and output are all present', async () => {
     const ctx = await setup()
     try {
@@ -178,7 +178,7 @@ describe('spec 12 — anti-introspection', () => {
   })
 })
 
-describe('spec 16 — cold-verifier-isolation', () => {
+describe('spec 16, cold-verifier-isolation', () => {
   it('accepts spec + artifact only, and names every leaked key', async () => {
     const ctx = await setup()
     try {
@@ -204,7 +204,7 @@ describe('spec 16 — cold-verifier-isolation', () => {
   })
 })
 
-describe('spec 19 — idempotency', () => {
+describe('spec 19, idempotency', () => {
   it('reports firstSeen only on the first fingerprint and replays on rerun', async () => {
     const ctx = await setup()
     try {
@@ -236,7 +236,7 @@ describe('spec 19 — idempotency', () => {
   })
 })
 
-describe('spec 36 — verifier-forking', () => {
+describe('spec 36, verifier-forking', () => {
   it('forks the verifier from the spec and excludes producer output', async () => {
     const ctx = await setup()
     try {
@@ -261,7 +261,7 @@ describe('spec 36 — verifier-forking', () => {
   })
 })
 
-describe('spec 47 — chain-of-verification', () => {
+describe('spec 47, chain-of-verification', () => {
   it('chains each layer onto the previous one and rejects a single-layer chain', async () => {
     const ctx = await setup()
     try {
@@ -294,7 +294,7 @@ describe('spec 47 — chain-of-verification', () => {
   })
 })
 
-describe('spec 48 — independent-replication', () => {
+describe('spec 48, independent-replication', () => {
   it('derives the replica id from a distinct seed and stays deterministic', async () => {
     const ctx = await setup()
     try {
@@ -323,7 +323,7 @@ describe('spec 48 — independent-replication', () => {
   })
 })
 
-describe('spec 70 — speculative-verify', () => {
+describe('spec 70, speculative-verify', () => {
   it('verifies a matching partial artifact and aborts on divergence', async () => {
     const ctx = await setup()
     try {

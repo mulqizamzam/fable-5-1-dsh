@@ -1,12 +1,12 @@
 /**
- * llm/stream hook — specs 15, 22, 33, 42, 53, 58, 92.
+ * llm/stream hook, specs 15, 22, 33, 42, 53, 58, 92.
  *
  * Verified contract: `llm/stream` is a WATERFALL over the token stream; a
  * listener MUST call next() and pass chunks through. This wrapper counts
  * tokens (stage budget + interleaved budget), fingerprints chunks for dedup,
- * labels the reasoning between tool calls as interleaved (spec 15 — not
+ * labels the reasoning between tool calls as interleaved (spec 15, not
  * parallel), feeds the per-turn convergence tracker (spec 58), and tracks
- * convergence for early exit — without altering the stream.
+ * convergence for early exit, without altering the stream.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
@@ -68,7 +68,7 @@ export function wireLlmStream(ctx: Context): void {
       // Runs on the cancelled path too, so an abandoned stream is still accounted.
       // spec 15: reasoning between tool calls is interleaved, never parallel.
       guard(() => svc.labelPass(key, stage, 'interleaved'))
-      // spec 58: this turn's distance from the previous turn — a stable stream
+      // spec 58: this turn's distance from the previous turn, a stable stream
       // is one convergence signal. New evidence (tools/result) is the other.
       guard(() => {
         const previousTurnTokens = svc.episode(key).previousTurnTokens

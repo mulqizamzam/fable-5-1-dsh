@@ -1,5 +1,5 @@
 /**
- * Cost tools — specs 11, 60, 95, 97 (Gate 4d).
+ * Cost tools, specs 11, 60, 95, 97 (Gate 4d).
  */
 import type { ToolSpec } from './shared.ts'
 
@@ -92,7 +92,7 @@ export function costTools(): ToolSpec[] {
       spec: '95',
       effectful: true,
       name: 'pass-cost-accounting',
-      description: 'Account one reasoning pass into the cost ledger — tokens, producer+verifier latency, retries as risk — and return its running stage cost (spec 95).',
+      description: 'Account one reasoning pass into the cost ledger, tokens, producer+verifier latency, retries as risk, and return its running stage cost (spec 95).',
       parameters: {
         type: 'object',
         required: ['passId', 'tokens', 'latencyMs', 'retries', 'verifierMs'],
@@ -187,7 +187,7 @@ export function costTools(): ToolSpec[] {
         if (breaches.length > 0) {
           service.recordWorklog({
             stage: `pass:${passId}`,
-            output: `SLA breach [${breaches.join(', ')}] — degraded`,
+            output: `SLA breach [${breaches.join(', ')}], degraded`,
             check: `latency<=${latencyTarget}, tokens<=${tokensTarget}, accuracy>=${accuracyTarget}`,
             verdict: 'neutral',
             unverified: breaches,

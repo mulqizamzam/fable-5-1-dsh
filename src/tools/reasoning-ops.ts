@@ -1,5 +1,5 @@
 /**
- * Reasoning-ops tools — specs 73, 74, 75, 76, 77, 78, 79, 80, 82, 83, 84, 85,
+ * Reasoning-ops tools, specs 73, 74, 75, 76, 77, 78, 79, 80, 82, 83, 84, 85,
  * 86, 87, 88, 89, 90 (PRD §4.7/§4.8/§4.9, Gates 4g–4n).
  *
  * The flow-control and operations half of the reasoning group: quorum,

@@ -1,5 +1,5 @@
 /**
- * Unit: visualize tool group — spec 100 (policy registry) + state inspection.
+ * Unit: visualize tool group, spec 100 (policy registry) + state inspection.
  *
  * Host setup mirrors test/unit/reasoning-core.spec.ts: a real Cordis Context
  * with the real dsh services.

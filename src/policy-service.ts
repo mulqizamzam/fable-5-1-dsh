@@ -1,5 +1,5 @@
 /**
- * fable51 — the policy service (PRD §3.1).
+ * fable51: the policy service (PRD §3.1).
  *
  * Holds the validated config plus every piece of durable bundle state: the
  * immutable policy registry (100), pass lineage (69/87/94), the
@@ -62,7 +62,7 @@ export interface ApprovalRequest {
 const LADDER: readonly EscalationRung[] = ['retry', 'replan', 'downgrade', 'ask']
 const EFFORT_LADDER = ['low', 'mid', 'high', 'max'] as const
 
-// Bundle-state caps. Not yet configurable — no config key exists for them; these
+// Bundle-state caps. Not yet configurable, no config key exists for them; these
 // exist only so a long-lived host cannot grow state for the process lifetime.
 /** Worklog ring cap (spec 13): newest kept, oldest trimmed. */
 const WORKLOG_CAP = 5000
@@ -163,8 +163,8 @@ export class Fable51Policy extends Service {
    *
    * The counters describe one run, not the host: two sessions in one host
    * used to share them, so one session's turn/start reset the other's stage
-   * budget and fork allowance. The audit rings above stay host-wide — a long
-   * run is audited at host level — but a budget belongs to the run spending it.
+   * budget and fork allowance. The audit rings above stay host-wide, a long
+   * run is audited at host level, but a budget belongs to the run spending it.
    */
   readonly episodes: EpisodeStore
 
@@ -184,7 +184,7 @@ export class Fable51Policy extends Service {
     wireLlmStream(ctx)
     wireSessionEvent(ctx)
     const toolCount = registerTools(ctx)
-    ctx.logger('fable51').info(`fable-5-1 loaded — ${toolCount} tools registered`)
+    ctx.logger('fable51').info(`fable-5-1 loaded, ${toolCount} tools registered`)
   }
 
   /**
@@ -306,8 +306,8 @@ export class Fable51Policy extends Service {
   /**
    * Executions currently holding a parallel-pass slot (spec 55).
    *
-   * A call can be denied after the slot was taken — another gate may refuse
-   * it, or the caller may abort — so the holder is tracked per execution and
+   * A call can be denied after the slot was taken, another gate may refuse
+   * it, or the caller may abort, so the holder is tracked per execution and
    * released exactly once, by whoever reports the result.
    */
   private readonly slotHolders = new WeakMap<object, string>()

@@ -1,5 +1,5 @@
 /**
- * Unit: budget-advisor tool group — spec 11 (cost-accuracy-tradeoff) + spec 60 (reasoning-cost-model).
+ * Unit: budget-advisor tool group, spec 11 (cost-accuracy-tradeoff) + spec 60 (reasoning-cost-model).
  *
  * Host setup mirrors test/unit/reasoning-core.spec.ts: a real Cordis Context
  * with the real dsh services.

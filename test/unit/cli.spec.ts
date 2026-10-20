@@ -1,5 +1,5 @@
 /**
- * Unit: CLI entry point — src/cli.ts.
+ * Unit: CLI entry point, src/cli.ts.
  *
  * The CLI boots a real Cordis host with the real dsh services, so these
  * tests exercise the same path the shipped binary runs.
@@ -36,7 +36,7 @@ describe('fable51 CLI', () => {
     const { code, out } = await capture(['inspect'])
     assert.equal(code, 0, 'inspect must exit 0')
     // defect guard: the rendered text lives inside the tool's output, not on
-    // the envelope — reading the wrong level silently fell back to JSON.
+    // the envelope, reading the wrong level silently fell back to JSON.
     assert.ok(out.startsWith('=== fable51 Policy Visualizer ==='), `expected the ASCII banner, got: ${out.slice(0, 120)}`)
     assert.ok(out.includes('--- Policies ---'))
     assert.ok(out.includes('--- Lineage ---'))

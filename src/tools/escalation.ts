@@ -1,5 +1,5 @@
 /**
- * Escalation tools — specs 8, 14, 27, 28, 52, 72, 81 (Gate 4e).
+ * Escalation tools, specs 8, 14, 27, 28, 52, 72, 81 (Gate 4e).
  *
  * Clarification halts (8), the replan budget (14), the human-in-the-loop
  * gate (27), the escalation ladder (28), abort criteria (52), the pass
@@ -130,7 +130,7 @@ export function escalationTools(): ToolSpec[] {
             ...(hasExternal ? [] : ['external']),
             ...(hasCost ? [] : ['estimatedCost']),
           ]
-          return { required: true, reason: `risk flags not supplied (${absent.join(', ')}) — approval required` }
+          return { required: true, reason: `risk flags not supplied (${absent.join(', ')}), approval required` }
         }
         return service.requiresApproval({
           action: action ?? '',

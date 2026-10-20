@@ -1,5 +1,5 @@
 /**
- * Unit: reasoning-flow tools — specs 51, 53, 54, 56, 57, 59, 61–69, 71.
+ * Unit: reasoning-flow tools, specs 51, 53, 54, 56, 57, 59, 61–69, 71.
  * Host: real Cordis + real dsh services (5-plugin setup; a 3-plugin host
  * leaves the policy service PENDING and registers nothing).
  */

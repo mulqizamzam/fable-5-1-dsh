@@ -15,7 +15,7 @@ export class PassLineage {
 
   record(pass: ReasoningPass): ReasoningPass {
     if (this.passes.has(pass.id)) {
-      throw new Error(`pass ${pass.id} already recorded — lineage is append-only`)
+      throw new Error(`pass ${pass.id} already recorded, lineage is append-only`)
     }
     if (pass.parentId !== null && !this.passes.has(pass.parentId)) {
       throw new Error(`pass ${pass.id} references unknown parent ${pass.parentId}`)
@@ -93,7 +93,7 @@ export class PassLineage {
 
   /**
    * Spec 87 (pass-lineage-prune): drop passes that no live pass needs, keeping
-   * audit-protected ids and the ancestor chain of every live pass — without the
+   * audit-protected ids and the ancestor chain of every live pass, without the
    * chain a live pass keeps reporting parents that were just dropped.
    */
   prune(liveIds: Iterable<string>): readonly string[] {

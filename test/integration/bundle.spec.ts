@@ -15,7 +15,7 @@ import Fable51Policy from '../../src/index.ts'
 async function setup() {
   const ctx = new Context()
   // Real host services, in verified dependency order: ToolRuntime injects
-  // ['systemPrompt'] — loading it without SystemPrompt leaves the tools
+  // ['systemPrompt'], loading it without SystemPrompt leaves the tools
   // service silently pending, which is the exact failure mode Gate 1 guards.
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
@@ -25,7 +25,7 @@ async function setup() {
   return ctx
 }
 
-describe('Gate 1 — activation', () => {
+describe('Gate 1, activation', () => {
   it('service resolves on ctx.fable51 with all injections satisfied', async () => {
     const ctx = await setup()
     try {
@@ -68,7 +68,7 @@ describe('Gate 1 — activation', () => {
   })
 })
 
-describe('Gate 3 — hooks fire', () => {
+describe('Gate 3, hooks fire', () => {
   it('agent/pre-step waterfall passes through the bundle observer', async () => {
     const ctx = await setup()
     try {

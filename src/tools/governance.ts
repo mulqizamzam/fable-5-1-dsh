@@ -1,5 +1,5 @@
 /**
- * Governance tools — specs 13, 20, 91, 92, 94, 98, 99 (Gate 4o).
+ * Governance tools, specs 13, 20, 91, 92, 94, 98, 99 (Gate 4o).
  *
  * The group that keeps a delivery honest: every result emits a worklog line
  * (13) with an explicit unverified list (20), merges are canonical and
@@ -42,7 +42,7 @@ export function governanceTools(): ToolSpec[] {
       spec: '13',
       effectful: true,
       name: 'worklog-format',
-      description: 'Record the final worklog line — stage, output, check, verdict, and the explicit unverified list (spec 13).',
+      description: 'Record the final worklog line, stage, output, check, verdict, and the explicit unverified list (spec 13).',
       parameters: {
         type: 'object',
         required: ['stage', 'output', 'check', 'verdict'],
@@ -152,7 +152,7 @@ export function governanceTools(): ToolSpec[] {
         const { outputs } = args as { outputs: Record<string, unknown>[] }
         for (const [index, output] of outputs.entries()) {
           if (typeof output !== 'object' || output === null || Array.isArray(output)) {
-            throw new Error(`outputs[${index}] must be an object — spec 91 merges by union of object keys`)
+            throw new Error(`outputs[${index}] must be an object, spec 91 merges by union of object keys`)
           }
         }
         const forward = mergeOutputs(outputs)

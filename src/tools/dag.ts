@@ -1,5 +1,5 @@
 /**
- * DAG tools — specs 17, 34, 50, 93 (Gate 4c).
+ * DAG tools, specs 17, 34, 50, 93 (Gate 4c).
  *
  * A stage graph and a reasoning-pass graph are DAGs, never linear lists: the
  * stage graph is topologically sorted and a cycle is reported in place of an
@@ -136,7 +136,7 @@ export function dagTools(): ToolSpec[] {
     {
       spec: '17',
       name: 'stage-graph-dag',
-      description: 'Kahn topological sort of a stage graph; a cyclic graph is a hard fail — order comes back null with the offending cycle path (spec 17).',
+      description: 'Kahn topological sort of a stage graph; a cyclic graph is a hard fail, order comes back null with the offending cycle path (spec 17).',
       parameters: {
         type: 'object',
         required: ['nodes', 'edges'],
@@ -200,7 +200,7 @@ export function dagTools(): ToolSpec[] {
         const { service, sessionKey } = env
         if (typeof passId !== 'string' || passId.length === 0) throw new Error('passId must be a non-empty string')
         if (service.lineage.get(passId) !== undefined) {
-          throw new Error(`pass ${passId} is already recorded — lineage is append-only`)
+          throw new Error(`pass ${passId} is already recorded, lineage is append-only`)
         }
         const unique = [...new Set(parseStringList(deps, 'deps'))]
         const unknown = unique.filter(dep => service.lineage.get(dep) === undefined)
@@ -226,7 +226,7 @@ export function dagTools(): ToolSpec[] {
           unverified: [],
         }
         service.recordPass(pass)
-        // Spec 15: label the pass's reasoning mode by its dependency shape —
+        // Spec 15: label the pass's reasoning mode by its dependency shape,
         // a join of several branches is parallel, a single link is sequential.
         service.labelPass(sessionKey, passId, unique.length > 1 ? 'parallel' : 'sequential')
         return { recorded: true, ancestors: service.lineage.ancestors(passId) }

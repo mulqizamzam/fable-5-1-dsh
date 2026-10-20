@@ -1,5 +1,5 @@
 /**
- * tools/pre-execute hook — spec 55 (reasoning-bandwidth).
+ * tools/pre-execute hook, spec 55 (reasoning-bandwidth).
  *
  * Verified contract: `tools/pre-execute` is a WATERFALL with payload
  * `(exec, next)`; `next()` delegates to allow, and the decision may be
@@ -28,7 +28,7 @@ export function wireToolsPreExecute(ctx: Context): void {
     try {
       const granted = await svc.acquireSlot(key, exec.signal)
       // An aborted wait never took a slot, so it must not be recorded as
-      // holding one — the release side would then free a slot it never had.
+      // holding one, the release side would then free a slot it never had.
       if (granted) svc.holdSlot(exec, key)
     } catch (err) {
       // A plugin fault must never block a call: admit it and say so.

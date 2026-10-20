@@ -1,5 +1,5 @@
 /**
- * session/event hook — specs 10, 18, 25, 29, 30, 46, 88.
+ * session/event hook, specs 10, 18, 25, 29, 30, 46, 88.
  *
  * Verified contract: `session/event` is EMIT-mode with payload
  * `(session, event)`; `event.type` is a durable type (turn/start, turn/end,
@@ -25,7 +25,7 @@ export function wireSessionEvent(ctx: Context): void {
   ctx.on('session/created', (session: unknown) => {
     const svc = ctx.fable51 as Fable51Policy
     // The service is host-wide and outlives the session: a new session must not
-    // start on the previous session's escalation rung and replan count — and
+    // start on the previous session's escalation rung and replan count, and
     // must not reset them for the sessions still running.
     svc.resetEpisodeState(sessionKeyOf(session))
     const pinned = svc.config.determinism.pinnedVersions
@@ -46,7 +46,7 @@ export function wireSessionEvent(ctx: Context): void {
     switch (event.type) {
       case 'turn/start':
         // new stage: reset fork/merge counters (spec 96 budget window) and the
-        // stage budget (spec 22) — for THIS session only. Another session
+        // stage budget (spec 22), for THIS session only. Another session
         // running in the same host keeps its own budget.
         svc.resetTurnState(key)
         break

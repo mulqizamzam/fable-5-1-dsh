@@ -1,5 +1,5 @@
 /**
- * Reasoning-core tools — specs 31, 32, 35, 37, 38, 39, 40, 41, 42, 44, 45, 46, 49
+ * Reasoning-core tools, specs 31, 32, 35, 37, 38, 39, 40, 41, 42, 44, 45, 46, 49
  * (PRD §4.3/§4.4, Gates 4g–4n).
  *
  * The decision half of the reasoning group: fork/merge/discard structure

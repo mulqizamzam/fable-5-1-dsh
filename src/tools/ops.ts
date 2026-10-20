@@ -1,5 +1,5 @@
 /**
- * Ops tools — specs 21, 23, 24, 25, 26, 29, 30 (Gate 4f).
+ * Ops tools, specs 21, 23, 24, 25, 26, 29, 30 (Gate 4f).
  *
  * Enforced invariants: per-stage wall clock with expiry escalation (21),
  * fixed-precedence conflict resolution (23), one-line per-stage traces (24),
@@ -218,7 +218,7 @@ export function opsTools(): ToolSpec[] {
         const { path, operation } = args as { path: string; operation: 'read' | 'write' }
         const list = service.config.sandbox.allowList[operation] ?? []
         // A DECLARED allow-list is fail-closed exact matching, so traversal, NUL and
-        // case spellings all deny. An UNSET one is the read-open/write-closed default —
+        // case spellings all deny. An UNSET one is the read-open/write-closed default,
         // stated here rather than falling out of the empty-array branch.
         const allowed = list.length === 0 ? operation === 'read' : list.includes(path)
         const action = service.config.sandbox.escapeAction

@@ -1,5 +1,5 @@
 /**
- * Unit: the ops tool group — specs 21, 23, 24, 25, 26, 29, 30 (Gate 4f).
+ * Unit: the ops tool group, specs 21, 23, 24, 25, 26, 29, 30 (Gate 4f).
  *
  * Every tool is exercised through the real registry (typed envelope, spec id,
  * idempotent rerun) plus per-tool behavior assertions. The tools/result hook

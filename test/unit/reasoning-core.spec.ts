@@ -1,5 +1,5 @@
 /**
- * Unit: reasoning-core tool group — specs 31, 32, 35, 37, 38, 39, 40, 41, 42,
+ * Unit: reasoning-core tool group, specs 31, 32, 35, 37, 38, 39, 40, 41, 42,
  * 44, 45, 46, 49 (PRD §4.3/§4.4, Gates 4g–4n).
  *
  * Host setup mirrors test/integration/bundle.spec.ts: a real Cordis Context
@@ -153,21 +153,21 @@ describe('fable51 namespace', () => {
       const chainLines = ctx.fable51.worklog.filter((entry) => entry.stage === 'tool:fable51_chain-vs-tree')
       assert.equal(forkLines.length, 1, 'one worklog line per execution for the forking stage')
       assert.equal(chainLines.length, 1, 'one worklog line per execution for the chain-vs-tree stage')
-      assert.ok(ctx.fable51.worklog.length > forkLines.length, 'the worklog array holds other stages — never count it whole')
+      assert.ok(ctx.fable51.worklog.length > forkLines.length, 'the worklog array holds other stages, never count it whole')
     } finally {
       await ctx.fiber.dispose()
     }
   })
 })
 
-describe('spec 31 — reasoning-forking', () => {
+describe('spec 31, reasoning-forking', () => {
   it('forks with candidates and budget, merges without budget, keeps one, discards none', async () => {
     const ctx = await setup()
     try {
       const fork = await runIdempotent(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 2 })
       assert.equal(fork.spec, '31')
       assert.equal(fork.output.decision, 'fork')
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).forksThisStage, 2, 'the repeated fork must consume the stage budget twice — a cache hit skipped recordFork')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).forksThisStage, 2, 'the repeated fork must consume the stage budget twice, a cache hit skipped recordFork')
       const merge = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 0 })
       assert.equal(merge.output.decision, 'merge')
       const keep = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 1, budgetLeft: 0 })
@@ -190,7 +190,7 @@ describe('spec 31 — reasoning-forking', () => {
   })
 })
 
-describe('spec 32 — hypothesis-pruning', () => {
+describe('spec 32, hypothesis-pruning', () => {
   it('retains the top-k by score with id-ascending tie-break and reports the pruned tail', async () => {
     const ctx = await setup()
     try {
@@ -230,7 +230,7 @@ describe('spec 32 — hypothesis-pruning', () => {
   })
 })
 
-describe('spec 35 — chain-vs-tree', () => {
+describe('spec 35, chain-vs-tree', () => {
   it('selects a chain while the branch factor is at or below one and a tree above it', async () => {
     const ctx = await setup()
     try {
@@ -248,7 +248,7 @@ describe('spec 35 — chain-vs-tree', () => {
   })
 })
 
-describe('spec 37 — parallel-tool-feed', () => {
+describe('spec 37, parallel-tool-feed', () => {
   it('batches the independent calls into one feed', async () => {
     const ctx = await setup()
     try {
@@ -266,7 +266,7 @@ describe('spec 37 — parallel-tool-feed', () => {
   })
 })
 
-describe('spec 38 — reasoning-checkpoint', () => {
+describe('spec 38, reasoning-checkpoint', () => {
   it('snapshots the pass state and reports its id and content hash', async () => {
     const ctx = await setup()
     try {
@@ -284,7 +284,7 @@ describe('spec 38 — reasoning-checkpoint', () => {
       await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p8', state: { turn: 3 } })
       const rewritten = await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p7', state: { turn: 2, note: 'boundary' } })
       assert.equal(rewritten.rerun, false, 'the repeated checkpoint must re-execute, not replay')
-      assert.equal(ctx.fable51.snapshots.latest()?.id, 'p7', 'the repeated checkpoint must really write p7 again — a replayed answer would leave p8 newest')
+      assert.equal(ctx.fable51.snapshots.latest()?.id, 'p7', 'the repeated checkpoint must really write p7 again, a replayed answer would leave p8 newest')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -301,7 +301,7 @@ describe('spec 38 — reasoning-checkpoint', () => {
   })
 })
 
-describe('spec 39 — contradiction-detection', () => {
+describe('spec 39, contradiction-detection', () => {
   it('reports only the pairs whose values differ', async () => {
     const ctx = await setup()
     try {
@@ -332,7 +332,7 @@ describe('spec 39 — contradiction-detection', () => {
   })
 })
 
-describe('spec 40 — confidence-scoring', () => {
+describe('spec 40, confidence-scoring', () => {
   it('merges by summed weight, not by majority', async () => {
     const ctx = await setup()
     try {
@@ -374,7 +374,7 @@ describe('spec 40 — confidence-scoring', () => {
   })
 })
 
-describe('spec 41 — speculative-execution', () => {
+describe('spec 41, speculative-execution', () => {
   it('runs only while the reuse probability beats the wasted-work cost', async () => {
     const ctx = await setup()
     try {
@@ -396,7 +396,7 @@ describe('spec 41 — speculative-execution', () => {
   })
 })
 
-describe('spec 42 — early-exit', () => {
+describe('spec 42, early-exit', () => {
   it('stops once the last n changes all fall below the threshold', async () => {
     const ctx = await setup()
     try {
@@ -414,7 +414,7 @@ describe('spec 42 — early-exit', () => {
   })
 })
 
-describe('spec 44 — divergence-control', () => {
+describe('spec 44, divergence-control', () => {
   it('caps the fork at the configured fork depth and flags the excess', async () => {
     const ctx = await setup()
     try {
@@ -433,7 +433,7 @@ describe('spec 44 — divergence-control', () => {
   })
 })
 
-describe('spec 45 — merge-strategy', () => {
+describe('spec 45, merge-strategy', () => {
   it('merges by union, intersection, and weighted concatenation in first-seen order', async () => {
     const ctx = await setup()
     try {
@@ -442,7 +442,7 @@ describe('spec 45 — merge-strategy', () => {
       assert.equal(union.spec, '45')
       assert.deepEqual(union.output.merged, ['a', 'b', 'c'])
       assert.equal(union.output.strategy, 'union')
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).mergesThisStage, 2, 'the repeated merge must consume the stage budget twice — a cache hit skipped recordMerge')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).mergesThisStage, 2, 'the repeated merge must consume the stage budget twice, a cache hit skipped recordMerge')
       const intersection = await run(ctx, 'fable51_merge-strategy', { strategy: 'intersection', sets })
       assert.deepEqual(intersection.output.merged, ['b', 'c'])
       const weighted = await run(ctx, 'fable51_merge-strategy', { strategy: 'weighted', sets: [['a', 'b'], ['b', 'a']] })
@@ -456,7 +456,7 @@ describe('spec 45 — merge-strategy', () => {
   })
 })
 
-describe('spec 46 — reasoning-rollback', () => {
+describe('spec 46, reasoning-rollback', () => {
   it('reverts to the latest checkpoint, or null when none exists', async () => {
     const ctx = await setup()
     try {
@@ -479,7 +479,7 @@ describe('spec 46 — reasoning-rollback', () => {
   })
 })
 
-describe('spec 49 — reasoning-trace-format', () => {
+describe('spec 49, reasoning-trace-format', () => {
   it('emits the trace record with input/output fingerprints and the weighted score', async () => {
     const ctx = await setup()
     try {

@@ -3,7 +3,7 @@
  *
  * The budget counters describe ONE run, not the host. Two sessions sharing
  * one ctx.fable51 used to share a single set of counters, so one session's
- * turn/start reset another session's stage budget and fork allowance —
+ * turn/start reset another session's stage budget and fork allowance,
  * the other session then had a full budget again and could overspend.
  *
  * The host already stamps session identity on every surface the bundle
@@ -20,7 +20,7 @@ export type EffortTier = 'low' | 'mid' | 'high' | 'max'
 export type ReasoningMode = 'parallel' | 'sequential' | 'interleaved'
 
 /**
- * Key for a call whose session the host did not name — a tool executed
+ * Key for a call whose session the host did not name: a tool executed
  * outside an agent, or a unit test. It is a real bucket, not a wildcard:
  * one session's turn never resets it, so it cannot be reset by a stranger.
  */
@@ -148,7 +148,7 @@ export class EpisodeStore {
   /**
    * Start one session's TURN over: the stage budget, the fork/merge window
    * and the once-per-task effort escalation. The escalation ladder, the
-   * replan count and the convergence window survive a turn — they measure
+   * replan count and the convergence window survive a turn, because they measure
    * the run, not the turn.
    */
   resetTurn(key: string): EpisodeState {

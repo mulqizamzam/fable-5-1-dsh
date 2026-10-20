@@ -2,19 +2,19 @@
  * Fail-loud configuration contract (spec: bundle config; PRD §5).
  *
  * Validation is deliberately dependency-free and reports an explicit field
- * path on violation — silent misconfiguration is the top dsh port failure
+ * path on violation, silent misconfiguration is the top dsh port failure
  * mode. No field is defaulted silently when the value conflicts.
  */
 
 export interface Fable51Config {
-  /** Spec 1 — context thresholds. Strictly ordered compactAt < dropAt < spillAt. */
+  /** Spec 1, context thresholds. Strictly ordered compactAt < dropAt < spillAt. */
   context: {
     compactAt: number
     dropAt: number
     spillAt: number
     spillPath: string
   }
-  /** Specs 6, 11 — effort escalation and cost ceiling. */
+  /** Specs 6, 11, effort escalation and cost ceiling. */
   effort: {
     defaultTier: 'low' | 'mid' | 'high' | 'max'
     escalateOn: Array<'search' | 'multihop' | 'ambiguity'>

@@ -2,7 +2,7 @@
  * Reasoning snapshots with structural diff (specs 38, 46, 77, 83).
  *
  * A snapshot is an immutable content-addressed checkpoint; diff reports
- * added/removed/changed keys between two snapshots — the drift and
+ * added/removed/changed keys between two snapshots, the drift and
  * regression detector.
  */
 import { fingerprint } from './cache.ts'

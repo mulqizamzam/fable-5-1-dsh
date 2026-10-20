@@ -1,5 +1,5 @@
 /**
- * Unit: defect twins from the 2026-10-15 audit — every test here FAILS on the
+ * Unit: defect twins from the 2026-10-15 audit, every test here FAILS on the
  * pre-fix code and passes after. Each encodes the exact reproducer that was
  * observed against the real host and the real modules.
  *
@@ -80,7 +80,7 @@ function pass(id: string, parentId: string | null = null): ReasoningPass {
   }
 }
 
-describe('audit — state/lineage (specs 94, 59)', () => {
+describe('audit, state/lineage (specs 94, 59)', () => {
   it('GC keeps the N most RECENT passes, not the lexicographically largest ids', () => {
     const lineage = new PassLineage()
     for (let i = 1; i <= 12; i += 1) lineage.record(pass(`p${i}`))
@@ -103,7 +103,7 @@ describe('audit — state/lineage (specs 94, 59)', () => {
   })
 })
 
-describe('audit — state/snapshots (specs 38, 77)', () => {
+describe('audit, state/snapshots (specs 38, 77)', () => {
   it('a caller mutation after create cannot rewrite a stored snapshot', () => {
     const store = new SnapshotStore()
     const shared = { pass: { verdict: 'verified' } }
@@ -122,14 +122,14 @@ describe('audit — state/snapshots (specs 38, 77)', () => {
   })
 })
 
-describe('audit — state/cache (spec 65)', () => {
+describe('audit, state/cache (spec 65)', () => {
   it('canonicalize distinguishes undefined from JSON null', () => {
     assert.notEqual(canonicalize({ v: undefined }), canonicalize({ v: null }))
     assert.notEqual(fingerprint(undefined), fingerprint(null), 'a fingerprint must not certify one artifact as another')
   })
 })
 
-describe('audit — state/registry (spec 100)', () => {
+describe('audit, state/registry (spec 100)', () => {
   it('a policy id carries exactly one active record and the highest active version wins', () => {
     const registry = new PolicyRegistry()
     registry.register({ id: 'p', version: '2.0.0', owner: 'o', active: true, hash: 'h2' })
@@ -147,7 +147,7 @@ describe('audit — state/registry (spec 100)', () => {
   })
 })
 
-describe('audit — config (specs 14, 96)', () => {
+describe('audit, config (specs 14, 96)', () => {
   it('rejects a fractional counter instead of silently rounding the budget', async () => {
     const { resolveConfig } = await import('../../src/config/defaults.ts')
     for (const partial of [
@@ -160,7 +160,7 @@ describe('audit — config (specs 14, 96)', () => {
   })
 })
 
-describe('audit — hooks (spec 6)', () => {
+describe('audit, hooks (spec 6)', () => {
   it('effort escalates once per task, not once per pre-step over the whole transcript', async () => {
     const ctx = await setup()
     try {
@@ -178,7 +178,7 @@ describe('audit — hooks (spec 6)', () => {
   })
 })
 
-describe('audit — policy service (specs 95, 28)', () => {
+describe('audit, policy service (specs 95, 28)', () => {
   it('stageCost never shrinks when the cost-ledger ring evicts old bookings', async () => {
     const ctx = await setup()
     try {
@@ -214,7 +214,7 @@ describe('audit — policy service (specs 95, 28)', () => {
   })
 })
 
-describe('audit — tools/verification (specs 19, 47)', () => {
+describe('audit, tools/verification (specs 19, 47)', () => {
   it('idempotency reports firstSeen=false once the input has been fingerprinted', async () => {
     const ctx = await setup()
     try {
@@ -238,7 +238,7 @@ describe('audit — tools/verification (specs 19, 47)', () => {
   })
 })
 
-describe('audit — tools that failed open on unvalidated arguments', () => {
+describe('audit, tools that failed open on unvalidated arguments', () => {
   it('timeboxing records a distinct snapshot per expiry', async () => {
     const ctx = await setup()
     try {

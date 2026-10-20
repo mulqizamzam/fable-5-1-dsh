@@ -1,5 +1,5 @@
 /**
- * Unit: the DAG tool group — specs 17, 34, 50, 93 (Gate 4c).
+ * Unit: the DAG tool group, specs 17, 34, 50, 93 (Gate 4c).
  *
  * Host setup follows test/integration/bundle.spec.ts, but loads every service
  * the policy injects: Fable51Policy declares inject ['tools','llm','sessions'],
@@ -72,7 +72,7 @@ function order(value: Record<string, unknown>): string[] {
   return value.order as string[]
 }
 
-describe('spec 17 — stage-graph-dag', () => {
+describe('spec 17, stage-graph-dag', () => {
   const nodes = ['a', 'b', 'c', 'd']
   const edges = [['a', 'b'], ['a', 'c'], ['b', 'd'], ['c', 'd']] as const
 
@@ -144,7 +144,7 @@ describe('spec 17 — stage-graph-dag', () => {
   })
 })
 
-describe('spec 34 — reasoning-dag', () => {
+describe('spec 34, reasoning-dag', () => {
   it('records a pass chain and reports ancestors nearest-first', async () => {
     const ctx = await setup()
     try {
@@ -210,7 +210,7 @@ describe('spec 34 — reasoning-dag', () => {
   })
 })
 
-describe('spec 50 — deadlock-detection', () => {
+describe('spec 50, deadlock-detection', () => {
   it('detects mutual wait and reports the closed cycle', async () => {
     const ctx = await setup()
     try {
@@ -256,7 +256,7 @@ describe('spec 50 — deadlock-detection', () => {
   })
 })
 
-describe('spec 93 — pass-dependency-inference', () => {
+describe('spec 93, pass-dependency-inference', () => {
   it('infers shared-fact edges minus the declared ones', async () => {
     const ctx = await setup()
     try {
@@ -316,7 +316,7 @@ describe('fable51.* namespace', () => {
         ['deadlock-detection', '50'],
         ['pass-dependency-inference', '93'],
       ] as const) {
-        assert.ok(names.includes(`fable51_${name}`), `fable51_${name} must be registered — registered: ${names.join(', ')}`)
+        assert.ok(names.includes(`fable51_${name}`), `fable51_${name} must be registered, registered: ${names.join(', ')}`)
         const value = await run(ctx, name, name === 'reasoning-dag'
           ? { passId: 'ns-pass', deps: [] }
           : name === 'deadlock-detection'

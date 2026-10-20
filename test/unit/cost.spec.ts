@@ -1,5 +1,5 @@
 /**
- * Unit: cost tool group — specs 11, 60, 95, 97 (PRD §4.2/§4.5/§4.9, Gate 4d).
+ * Unit: cost tool group, specs 11, 60, 95, 97 (PRD §4.2/§4.5/§4.9, Gate 4d).
  *
  * Host setup mirrors test/integration/bundle.spec.ts / test/unit/__probe.spec.ts:
  * a real Cordis Context with the real dsh services. Fable51Policy injects
@@ -67,7 +67,7 @@ describe('fable51_namespace', () => {
   })
 })
 
-describe('spec 11 — cost-accuracy-tradeoff', () => {
+describe('spec 11, cost-accuracy-tradeoff', () => {
   it('maps task class to tier, the deterministic cost curve, and accuracy', async () => {
     const ctx = await setup()
     try {
@@ -104,7 +104,7 @@ describe('spec 11 — cost-accuracy-tradeoff', () => {
   })
 })
 
-describe('spec 60 — reasoning-cost-model', () => {
+describe('spec 60, reasoning-cost-model', () => {
   it('computes cost = tokens*0.000002 + latencyMs*0.000001 + riskWeight*1000 exactly', async () => {
     const ctx = await setup()
     try {
@@ -146,7 +146,7 @@ describe('spec 60 — reasoning-cost-model', () => {
   })
 })
 
-describe('spec 95 — pass-cost-accounting', () => {
+describe('spec 95, pass-cost-accounting', () => {
   it('books producer+verifier latency and retries as risk, then reports the stage cost', async () => {
     const ctx = await setup()
     try {
@@ -183,7 +183,7 @@ describe('spec 95 — pass-cost-accounting', () => {
   })
 })
 
-describe('spec 97 — pass-sla', () => {
+describe('spec 97, pass-sla', () => {
   it('passes cleanly within config defaults and records no breach worklog', async () => {
     const ctx = await setup()
     try {

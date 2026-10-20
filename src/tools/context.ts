@@ -1,9 +1,9 @@
 /**
- * Context & session tools — specs 1, 2, 3, 9, 22, 33 (Gate 4a).
+ * Context & session tools, specs 1, 2, 3, 9, 22, 33 (Gate 4a).
  *
  * Reference implementation for all tool groups: typed envelope via
  * defineTool, idempotent by construction, no silent side effects. Arguments
- * are validated inside execute (fail-loud) — the registry does not validate
+ * are validated inside execute (fail-loud), the registry does not validate
  * `parameters` at execution time.
  */
 import type { ToolSpec } from './shared.ts'
@@ -101,7 +101,7 @@ export function contextTools(): ToolSpec[] {
         const violations: string[] = []
         if (Object.keys(inputSchema).length === 0) violations.push('inputSchema missing')
         if (Object.keys(outputSchema).length === 0) violations.push('outputSchema missing')
-        if (depth > 1) violations.push(`spawn depth ${depth} > 1 — recursive fanout blocked`)
+        if (depth > 1) violations.push(`spawn depth ${depth} > 1, recursive fanout blocked`)
         return { valid: violations.length === 0, violations }
       },
     },
