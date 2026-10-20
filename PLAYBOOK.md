@@ -10,7 +10,7 @@ Status di host ini (diverifikasi 2026-10-14):
 | Profile aktif | `$DSH_HOME/profiles/web` — ada di `dependencies` (`link:`) **dan** `dsh.profile.bundles` |
 | Profile uji | `$DSH_HOME/profiles/fable-test` — `dsh-base` + `dsh-headless` + `dsh-ui-director` + bundle ini |
 | Entry id | `fable-5-1` |
-| Tool | 90 tool `fable51_*` (dari 100 spec; spec 4 `progress-reporting` dan spec 55 `reasoning-bandwidth` tidak diimplementasikan, 8 spec lain hidup sebagai method service yang dipicu hook) |
+| Tool | 92 tool `fable51_*` (dari 100 spec; spec 4 `progress-reporting` dan spec 55 `reasoning-bandwidth` tidak diimplementasikan, 6 spec lain hidup sebagai method service yang dipicu hook) |
 | HEAD | `32fb562` — *fix: stop the cache from freezing state, stop the envelope certifying blind* |
 
 ---
@@ -71,12 +71,31 @@ Untuk satu cek spesifik:
 | Merge paralel | `fable51_merge-strategy` |
 | Budget replan / retry | `fable51_replan-budget`, `fable51_pass-retry-policy` |
 | Baris audit akhir | `fable51_worklog-format` |
+| Lihat seluruh state service | `fable51_inspect` |
+| Rekomendasi budget per kelas task | `fable51_budget-advisor` |
+
+### Jalur CLI — tanpa agent
+
+Untuk melihat state bundle atau menyiapkan budget tanpa lewat agent:
+
+```sh
+pnpm build                        # emits lib/, including lib/cli.js
+
+fable51 inspect                   # ASCII: policies, lineage, costs, cache, snapshots, config
+fable51 inspect --format json
+fable51 advise-budget multihop    # recommended stageTokenBudget, maxForkDepth, effortTier
+```
+
+`fable51 inspect` read-only. `fable51 advise-budget` membaca cost ledger
+(spec 11, spec 60): kuantil p50/p90 per stage, diskalakan multiplier kelas
+task, dengan label confidence dari jumlah sampel. Ledger kosong → jatuh ke
+default kelas task dengan confidence `low`.
 
 ---
 
 ## 2. Kontrak hasil
 
-Semua 90 tool balas envelope yang sama:
+Semua 92 tool balas envelope yang sama:
 
 ```json
 { "ok": true, "spec": "5", "output": { … }, "verdict": "verified",
@@ -97,9 +116,9 @@ cache idempotency hanya berlaku pada perhitungan murni.
 
 ---
 
-## 3. Peta 90 tool
+## 3. Peta 92 tool
 
-Kelompok di bawah ini partisi eksak dari 90 tool (sudah diverifikasi: tidak ada
+Kelompok di bawah ini partisi eksak dari 92 tool (sudah diverifikasi: tidak ada
 tool yang hilang, dobel, atau karangan).
 
 | Kelompok | N | Tool |
@@ -111,6 +130,7 @@ tool yang hilang, dobel, atau karangan).
 | **Jejak, audit, determinisme** | 11 | `dependency-pinning` `determinism` `idempotency` `observability` `pass-observability` `postmortem-format` `reasoning-dedup` `reasoning-fingerprint` `reasoning-trace-format` `research-provenance` `worklog-format` |
 | **Biaya & kualitas** | 8 | `cost-accuracy-tradeoff` `pass-cost-accounting` `pass-quality-score` `reasoning-ab-test` `reasoning-audit` `reasoning-cost-model` `reasoning-drift-detection` `reasoning-heatmap` |
 | **Governance & dispatch** | 16 | `conflict-resolution` `context-management` `diversity-injection` `human-in-the-loop` `parallel-tool-feed` `reasoning-affinity` `reasoning-deadline-propagation` `reasoning-decay` `reasoning-quarantine` `reasoning-quorum` `reasoning-warmup` `sandbox-boundaries` `spec-clarification` `stage-graph-dag` `subagent-contracts` `tool-call-batching` |
+| **Visualisasi & advise** | 2 | `budget-advisor` `inspect` |
 
 ---
 
@@ -252,13 +272,19 @@ pnpm build       # emit lib/
 
 ## Yang sudah diverifikasi, dan yang belum
 
-**Diverifikasi sesi ini:** 90 tool terbaca dari `src/tools/*.ts` dan partisi
+**Diverifikasi sesi ini:** 92 tool terbaca dari `src/tools/*.ts` dan partisi
 kelompok di §3 cocok persis; `src/config/defaults.ts` dibaca langsung;
 fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 `determinism`, `verification-gates` dipanggil live; `dsh --help` dipanggil untuk
 sintaks boot.
 
-**Belum diverifikasi:** `pnpm test`, `pnpm typecheck`, dan `pnpm build` tidak
-dijalankan; 87 tool selain yang disebut di atas tidak dipanggil langsung;
-perilaku setelah restart host belum diuji — klaim di §0 masih menunggu
-konfirmasi restart.
+**Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
+menjalankan 256 test di 92 suite dan semuanya lulus (unit + integration + e2e);
+`pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
+`node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
+dijalankan live keluar ASCII dan JSON.
+
+**Belum diverifikasi:** perilaku setelah restart host belum diuji — klaim di §0
+masih menunggu konfirmasi restart; `fable51 advise-budget` belum diuji dengan
+cost ledger terisi (hanya path ledger kosong yang tercover test); tool selain
+yang disebut di atas tidak dipanggil langsung.

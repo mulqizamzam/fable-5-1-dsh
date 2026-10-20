@@ -1,7 +1,7 @@
 # fable-5-1-dsh
 
 Fable-5.1 reasoning discipline for DeepSeek Harness (`dsh`). One bundle: a
-policy service at `ctx.fable51`, four event hooks, and 90 tools prefixed
+policy service at `ctx.fable51`, four event hooks, and 92 tools prefixed
 `fable51_`. It records tool outcomes, verification verdicts, and per-stage
 costs, so a long run can be audited after the fact.
 
@@ -11,17 +11,18 @@ Measured at commit `3b701d6`:
 |---|---|
 | Target dsh | developer preview `0.2.0-rc.2`, commit `23c78fcdd5ee0b497a77ca356608c51093c74bb9` |
 | Runtime | Cordis, TypeScript, ESM only |
-| Tools | 90, one per implemented spec id |
+| Tools | 92, one per implemented spec id |
 | Hooks | 4 (`agent/pre-step`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
+| CLI | `fable51 inspect`, `fable51 advise-budget` |
 | License | MIT |
 
 Coverage of the 100 specs in `sumber100specs.md`:
 
 | Class | Count | Where |
 |---|---|---|
-| Tool-backed | 90 | `fable51_<name>` on the tool surface |
-| Service method driven by a hook | 8 | specs 6, 10, 15, 18, 43, 58, 96, 100 |
+| Tool-backed | 92 | `fable51_<name>` on the tool surface |
+| Service method driven by a hook | 6 | specs 10, 15, 18, 43, 58, 96 |
 | Not implemented | 2 | spec 4 `progress-reporting`, spec 55 `reasoning-bandwidth` |
 
 The two missing specs are not claimed as features. Spec 4 has no progress
@@ -68,8 +69,36 @@ assume it from a successful install.
 |---|---|
 | Skill | Ask for `fable-5-1-discipline`. It orders stage map, fork, verify, merge, so you do not need tool names. |
 | Manual | Call one tool for one check. Common ones: `fable51_verification-gates`, `fable51_stage-graph-dag`, `fable51_sandbox-boundaries`, `fable51_worklog-format`. |
+| CLI | `fable51 inspect` renders the live service state; `fable51 advise-budget <taskClass>` recommends a budget config. |
 
 `PLAYBOOK.md` has the full tool map and the operator procedures.
+
+### CLI
+
+```sh
+pnpm build                        # emits lib/, including lib/cli.js
+
+fable51 inspect                              # ASCII: policies, lineage, costs, cache, snapshots, config
+fable51 inspect --format json                # the same state as JSON
+fable51 inspect --include-worklog --include-gate-log
+
+fable51 advise-budget multihop               # recommended stageTokenBudget, maxForkDepth, effortTier
+fable51 advise-budget search --format json
+fable51 advise-budget open --history-window 200 --min-samples 5
+```
+
+`fable51 inspect` is read-only: it reads the policy registry, pass lineage, cost
+ledger, reason cache, snapshot index, and worklog of a booted bundle. It mutates
+nothing.
+
+`fable51 advise-budget` derives its recommendation from the cost ledger
+(`spec 11`, `spec 60`): per-stage p50/p90 token and latency quantiles, scaled by
+a task-class multiplier, with a confidence label from the sample count. With an
+empty ledger it falls back to task-class defaults and reports `low` confidence —
+the recommendation is then a floor, not a measurement.
+
+The CLI boots a real Cordis host with the real dsh services, so it needs the
+bundle's peer dependencies resolvable at run time.
 
 ## Result contract
 
@@ -168,10 +197,11 @@ own permissions.
 ```sh
 pnpm test        # unit + integration + e2e, node:test via tsx
 pnpm typecheck   # tsc -b, then the test project
-pnpm build       # emit lib/
+pnpm build       # emit lib/ (including lib/cli.js, the CLI entry point)
 ```
 
 At commit `3b701d6`: 227 tests in 89 suites pass, and `pnpm typecheck` exits 0.
+With the visualizer, budget advisor, and CLI added: 256 tests in 92 suites pass.
 The integration and e2e suites load the bundle into a real Cordis host with the
 real dsh services (`dsh-tools`, `dsh-llm`, `dsh-session`, `dsh-system-prompt`)
 and drive real event dispatches. `pnpm typecheck` covers `test/**` as well as
@@ -186,7 +216,8 @@ and drive real event dispatches. `pnpm typecheck` covers `test/**` as well as
   reset for everyone at once. Isolating this needs session identity plumbed
   through `ToolRunContext` into the tools and hooks; it is not done here.
 - **No CI and no lockfile.** `lib/` is gitignored, so the artifact a host runs is
-  whatever was built locally.
+  whatever was built locally. The same applies to the CLI: `bin/fable51.js` is a
+  shim onto `lib/cli.js`, so it needs a `pnpm build` first.
 - **The full agent-loop path was not executed in the authoring environment.**
   The scratch profile's API key was invalid, an environment blocker rather than
   bundle behavior. Hook semantics are covered by the suites driving the real
