@@ -32,7 +32,7 @@ Dari 100 spec di `sumber100specs.md`:
 |---|---|---|
 | Punya tool sendiri | 91 | tool `fable51_<nama>` (92 tool; spec 11 dan 100 masing-masing punya tool kedua) |
 | Hidup sebagai method service yang dipicu hook | 9 | spec 4, 6, 10, 15, 18, 43, 55, 58, 96 |
-| Tidak diimplementasikan | 0 | — |
+| Tidak diimplementasikan | 0 | tidak ada |
 
 Angka 92 berasal dari enumerasi `allToolSpecs()` di `src/tools/index.ts`.
 Sebaran per kelompok:
@@ -88,7 +88,7 @@ menyebut field path.
 
 Jalur ringan memakai skill `fable-5-1-discipline` (stage map, fork,
 verifikasi, merge). Jalur manual memanggil tool langsung; daftar tool yang
-paling sering dipakai ada di `PLAYBOOK.md`.
+paling sering dipakai ada di `HOWTOUSE.md`.
 
 ## 4. Lingkup
 
@@ -96,8 +96,9 @@ paling sering dipakai ada di `PLAYBOOK.md`.
 
 - Satu policy service yang menyimpan registry, lineage, cache, snapshot,
   gate log, worklog, dan cost ledger.
-- Empat hook event: `agent/pre-step`, `tools/result`, `llm/stream`,
-  `session/event` (ditambah `session/created` dan `session/disposed`).
+- Lima hook event: `agent/pre-step`, `tools/pre-execute`, `tools/result`,
+  `llm/stream`, `session/event` (ditambah `session/created` dan
+  `session/disposed`).
 - 92 tool dengan envelope hasil seragam.
 - Config sembilan blok dengan validasi fail-loud.
 - Suite unit, integration, dan e2e yang memuat bundle ke host Cordis nyata.
@@ -108,7 +109,8 @@ paling sering dipakai ada di `PLAYBOOK.md`.
   allow-list, bukan pembatas filesystem.
 - Penegakan approval otomatis. `human-in-the-loop` hanya menjawab bila model
   memanggil tool itu.
-- Isolasi state per session. State dibagi satu host (lihat §13).
+- Isolasi state per session untuk counter run. Counter ditegakkan per
+  session, tapi jejak audit dibagi satu host (lihat §13).
 - Perubahan parameter model. Eskalasi effort hanya mengubah nilai buku di
   service dan mencatatnya.
 - Antarmuka pengguna, dashboard, atau penyimpanan lintas proses.
@@ -130,7 +132,8 @@ dsh host
 │   ├── worklog       cincin 5000
 │   └── costLedger    cincin 5000 + total per stage
 ├── hooks
-│   ├── agent/pre-step      waterfall, observasional
+│   ├── agent/pre-step      waterfall, observasional + progress
+│   ├── tools/pre-execute   waterfall, gerbang bandwidth
 │   ├── tools/result        emit, mencatat bukti dan biaya
 │   ├── llm/stream          waterfall generator, penghitung token
 │   └── session/*           lifecycle + durable event
@@ -227,7 +230,7 @@ diizinkan lewat `next()`.
 Hook harus memegang satu slot pass paralel per session sebelum call dispatch.
 Di atas `maxConcurrentPasses`, excess **antre**: call menunggu slot, bukan
 ditolak. Call nested (yang punya `parent`) tidak mengambil slot dan tidak
-pernah menunggu — rantai dependensi tidak boleh deadlock di cap. Slot dilepas
+pernah menunggu, karena rantai dependensi tidak boleh deadlock di cap. Slot dilepas
 saat hasil call dilaporkan. Hook tidak boleh menolak call.
 
 - Terima: tiga call paralel dengan cap dua → satu antre, ketiganya jalan;
@@ -290,7 +293,7 @@ Semua berkas teks: LF, UTF-8 tanpa BOM, newline di akhir berkas.
 
 - Terima: skrip pemeriksaan melaporkan nol pelanggaran.
 - Status: sebagian. Pada 79 berkas yang diperiksa, dua berkas tidak berakhir
-  newline: `PLAYBOOK.md` dan `test/unit/audit-defects.spec.ts`.
+  newline: `HOWTOUSE.md` dan `test/unit/audit-defects.spec.ts`.
 
 ### FR-15 Paket bisa dipasang
 
@@ -312,7 +315,7 @@ Hanya empat hal di bundle ini yang bisa menghentikan sesuatu.
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat dengan verdict `discarded`. Bila `escapeAction: 'abort'`, tool melempar sehingga envelope menjadi `ok:false`, bukan hasil yang terlihat sah. Allow-list kosong berarti read diizinkan dan write ditolak. Allow-list yang dideklarasikan dicocokkan persis. |
 | `human-in-the-loop` (27) | Fail-closed. `irreversible`, `external`, atau `estimatedCost` yang tidak dikirim tetap meminta approval. Tetap hanya berjalan bila model memanggil tool. |
-| Bandwidth (55) | Waterfall `tools/pre-execute` memegang satu slot pass paralel per session. Di atas `maxConcurrentPasses`, excess **antre** — call menunggu slot, bukan ditolak. Call nested (punya `parent`) tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
+| Bandwidth (55) | Waterfall `tools/pre-execute` memegang satu slot pass paralel per session. Di atas `maxConcurrentPasses`, excess **antre**: call menunggu slot, bukan ditolak. Call nested (punya `parent`) tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
 | Isolasi fault hook | Error di `agent/pre-step` atau `llm/stream` dicatat, lalu step atau stream lanjut. Plugin tidak bisa membatalkan turn. |
 
 ### 7.2 Yang mengklasifikasi dan melapor
@@ -428,36 +431,42 @@ konsekuensinya.
 
 ## 12. Kriteria penerimaan dan bukti
 
-Diukur pada 2026-10-20 terhadap commit `3b701d6` (working tree bersih saat
-pengukuran).
+Diukur pada 2026-10-20. Angka pertama diambil pada commit `3b701d6` (working
+tree bersih saat pengukuran), lalu diperbarui setelah penambahan visualizer,
+budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
-| Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 90 nama unik | lulus |
-| Suite test | `pnpm test` | 227 test, 89 suite, 227 lulus, 0 gagal | lulus |
+| Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
+| Suite test | `pnpm test` | 271 test, 95 suite, 271 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |
-| Hook menyala | suite unit, integration, e2e yang memanggil dispatcher Cordis | lulus | lulus |
-| Encoding | pemeriksaan 79 berkas | 2 pelanggaran | sebagian |
-| Boot profile dsh | `dsh --profile <p> --dump-config` | tidak dijalankan ulang | belum |
+| Hook menyala | suite unit, integration, e2e yang memanggil dispatcher Cordis | 5 hook | lulus |
+| Encoding | pemeriksaan seluruh berkas tracked | 0 pelanggaran | lulus |
+| Boot profile dsh | `dsh --profile fable-test --dump-config` | 92 tool terdaftar | lulus |
+| Jalur agent loop | `dsh --profile fable-test headless "<task>"` | envelope asli diterima | lulus |
+| CLI | `node bin/fable51.js inspect` dan `advise-budget` | ASCII dan JSON | lulus |
 
-Suite test terdiri dari 15 berkas unit, 1 integration, dan 1 e2e.
+Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
 
 ## 13. Batas, risiko, dan salah pakai
 
-1. **State per host, bukan per session.** Worklog, ledger, cache, snapshot,
-   lineage, dan counter skalar dipakai bersama oleh semua session di host.
-   `turn/start` dari satu session membersihkan budget token yang masih dipakai
-   session lain. Isolasi butuh identitas session dialirkan ke `ToolRunContext`;
-   itu belum dikerjakan.
+1. **Jejak audit per host, counter run per session.** Worklog, ledger, cache,
+   snapshot, dan lineage dipakai bersama oleh semua session di host, karena
+   audit jangka panjang memang di level host. Counter yang menegakkan run
+   (budget token, jatah fork/merge, escalation ladder, replan count, effort
+   tier, convergence window) sudah di-key per session: `turn/start` dari satu
+   session hanya me-reset budget session itu sendiri. Identitas session
+   dialirkan dari host lewat `Agent.session.id`, `ToolExecution.agent`,
+   `GenerateOptions.sessionId`, dan objek session lifecycle.
 2. **Bukan sandbox dan bukan approval mechanism.** Jangan jadikan
    `sandbox-boundaries` atau `human-in-the-loop` sebagai satu-satunya kontrol.
    Keduanya hanya berjalan bila model memanggil tool, dan yang pertama hanya
    membandingkan string path.
 3. **Host men-serialisasi tool call yang digerakkan model.** Terverifikasi di
    commit dsh yang dipin: model yang mengirim dua tool call dalam satu pesan
-   assistant tetap didispatch berurutan — log sesi menunjukkan `tool/call`,
+   assistant tetap didispatch berurutan. Log sesi menunjukkan `tool/call`,
    `tool/result`, `tool/call`, `tool/result` di dalam satu step. Artinya cap
    bandwidth (55) tidak pernah aktif untuk call yang dibuat model; ia mengikat
    dispatch programatik, tempat tool komposit memancarkan call paralel.
@@ -474,17 +483,18 @@ Suite test terdiri dari 15 berkas unit, 1 integration, dan 1 e2e.
    Worklog, cost ledger, cache, snapshot store, dan lineage dibagi semua
    session di satu host; counter yang menegakkan run sudah di-key per session.
    Lihat §7.3 dan README "Known limits".
-7. **Drift dokumentasi.** README masih menulis namespace `fable51.*`; kode
-   memakai `fable51_`. README juga menyebut 10 spec lain hidup sebagai method
-   service, padahal hanya 8 yang punya implementasi dan 2 tidak ada.
-8. **Dua berkas belum memenuhi aturan encoding.** Lihat FR-13.
+7. **Drift dokumentasi.** README menulis namespace `fable51.*`; kode memakai
+   `fable51_`. README juga menyebut 10 spec hidup sebagai method service,
+   padahal 9 yang punya implementasi.
+8. **Aturan encoding.** Terpenuhi sekarang: 0 pelanggaran pada seluruh berkas
+   tracked. Lihat FR-14.
 
 ## 14. Pertanyaan terbuka
 
 | # | Pertanyaan | Dampak bila tidak dijawab |
 |---|---|---|
-| 1 | ~~Apakah state harus diisolasi per session, dan siapa yang menyediakan identitas session?~~ **Terjawab**: diisolasi per session; identitas datang dari host (`Agent.session.id`, `ToolExecution.agent`, `GenerateOptions.sessionId`, objek session lifecycle). | — |
-| 2 | ~~Apakah spec 4 dan 55 akan diimplementasikan atau dicabut dari klaim 100 spec?~~ **Terjawab**: keduanya diimplementasikan (FR-07 dan FR-08). | — |
+| 1 | ~~Apakah state harus diisolasi per session, dan siapa yang menyediakan identitas session?~~ **Terjawab**: diisolasi per session; identitas datang dari host (`Agent.session.id`, `ToolExecution.agent`, `GenerateOptions.sessionId`, objek session lifecycle). | tidak ada |
+| 2 | ~~Apakah spec 4 dan 55 akan diimplementasikan atau dicabut dari klaim 100 spec?~~ **Terjawab**: keduanya diimplementasikan (FR-07 dan FR-08). | tidak ada |
 | 3 | Apakah validasi argumen tool dipindah ke waktu registrasi? | Schema rusak baru ketahuan saat dipanggil |
 | 4 | Apakah `lib/` akan dipublikasikan atau build dilakukan saat instalasi? | Tidak ada jaminan artefak yang dijalankan sama dengan sumber |
 | 5 | Apakah dua pelanggaran encoding diperbaiki di commit terpisah? | Gate encoding tidak bisa dipakai sebagai syarat rilis |
@@ -497,7 +507,7 @@ Suite test terdiri dari 15 berkas unit, 1 integration, dan 1 e2e.
 | `PRD_REVISI.md` | Spesifikasi pra-kode versi 0.1.1; sumber pemetaan 100 spec |
 | `sumber100specs.md` | Inventaris 100 spec (id, aturan inti, trigger) |
 | `RECON.md` | Bukti file dan baris untuk setiap surface dsh yang dipakai |
-| `PLAYBOOK.md` | Panduan operator: pasang, config, peta tool, batas |
+| `HOWTOUSE.md` | Panduan operator: pasang, config, peta tool, batas |
 | `README.md` | Ringkasan paket untuk konsumen baru |
 
 ## 16. Riwayat revisi
@@ -505,3 +515,4 @@ Suite test terdiri dari 15 berkas unit, 1 integration, dan 1 e2e.
 | Revisi | Tanggal | Isi |
 |---|---|---|
 | 1 | 2026-10-20 | Ditulis ulang sebagai PRD as-built dari commit `3b701d6`: angka terverifikasi, pembagian cakupan 90/8/2, kontrak config dan envelope, bukti penerimaan, serta batas yang diketahui |
+| 2 | 2026-10-20 | Cakupan spec 100/100 (spec 4 dan 55 diisi), 92 tool, 5 hook, episode per session, CLI `fable51 inspect` dan `advise-budget`, jalur agent loop terverifikasi end-to-end, panduan operator dipindah ke `HOWTOUSE.md` |

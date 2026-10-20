@@ -1,4 +1,4 @@
-# RECON — Phase 0 artifact
+# RECON: Phase 0 artifact
 
 Date: 2026-10-11. Scope: fable-5-1 / dsh port. All facts below were read from the
 pinned checkout, not from memory.
@@ -27,7 +27,7 @@ pinned checkout, not from memory.
 | `agent/step`, `session/boundary` | DO NOT EXIST (0 matches repo-wide) | grep over full checkout |
 | Service + inject/provide | exists. `class X extends Service { constructor(ctx) { super(ctx, 'name') } }`; `declare module '@deepseek-ai/cordis' { interface Context { x: X } }`; missing inject = plugin waits instead of running | `vendor/cordis/lib/types/service.d.ts:38`; `docs/user/develop/framework/service.md:9-32`; reference impl `packages/spill/spill/src/index.ts:45` |
 | service names | built-ins: `tools`, `llm`, `agents`; session service registered as `'sessions'` (`ctx.sessions`) | service.md:9-15; `packages/core/session/src/index.ts:953` |
-| `ctx.tools.register` | `register(definition: ToolDefinition): () => void` — one object, returns disposer; throws on missing `output.render`; name `run_code` reserved | `packages/core/tools/src/index.ts:1063-1088` |
+| `ctx.tools.register` | `register(definition: ToolDefinition): () => void`: one object, returns disposer; throws on missing `output.render`; name `run_code` reserved | `packages/core/tools/src/index.ts:1063-1088` |
 | ToolDefinition | extends `ToolSchema { deferLoading?, name, description, parameters }` + mandatory `output { schema, render, presentationMeta? }` + `execute(args, exec: ToolRunContext)` | tools/src/index.ts:223; `packages/llm/llm/src/types.ts:473`; ToolRunContext at tools/src/index.ts:418 |
 | bundle manifest | `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }` | `packages/experimental/inspector/package.json:37-39` |
 | patch file schema | YAML entry-list: `- insert: [{ id, name }]` | `packages/experimental/inspector/cordis.patch.yml`; `dsh --profile web --dump-config-schema` |
@@ -49,10 +49,10 @@ PreStepDecision/SessionEvent/etc. types come from host packages the PRD's §3.5 
 
 ## Gate execution plan
 
-- Gate 1: bundle loads in a real Cordis app (from checkout) AND composes in a real dsh profile (`dsh --profile <p> --dump-config`) — activation observed, no PENDING.
+- Gate 1: bundle loads in a real Cordis app (from checkout) AND composes in a real dsh profile (`dsh --profile <p> --dump-config`): activation observed, no PENDING.
 - Gate 2: config validation unit tests (bad config throws with field path).
 - Gate 3: all five hooks fire in a synthetic session driven through the real Cordis ctx.
-- Gates 4a–4o: per tool group — registration contract + invocation + idempotency rerun hash equality.
+- Gates 4a-4o: per tool group, registration contract + invocation + idempotency rerun hash equality.
 - Gate 5: state survives simulated session boundary; replay hash equality.
 - Gate 6: e2e synthetic session exercise.
 - Gate 7: encoding + fresh-install composition re-check.

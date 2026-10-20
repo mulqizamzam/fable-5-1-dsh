@@ -1,38 +1,48 @@
 # fable-5-1-dsh
 
-Fable-5.1 reasoning discipline for DeepSeek Harness (`dsh`). One bundle: a
-policy service at `ctx.fable51`, five event hooks, and 92 tools prefixed
-`fable51_`. It records tool outcomes, verification verdicts, and per-stage
-costs, so a long run can be audited after the fact.
+Disiplin reasoning Fable 5.1 untuk DSH (DeepSeek Harness). Satu bundle: satu
+policy service (`ctx.fable51`), lima hook event, dan 92 tool berprefiks
+`fable51_`.
 
-Measured at commit `3b701d6`:
+Yang dikerjakan bundle ini, secara konkret:
 
-| Item | Value |
+- **Menghitung budget per stage dan per session.** Token yang terpakai
+  tercatat per stage, alert di 80 persen, sinyal stop di 100 persen. Budget
+  milik satu run tidak bisa di-reset run lain.
+- **Mencatat verdict verifikasi yang tidak bisa mengarang.** Envelope hanya
+  berstatus `verified` kalau ada artifact, perintah, dan output. Gate yang
+  gagal berbalik `unverified`, bukan hijau.
+- **Menulis jejak audit yang bisa dibaca ulang.** Worklog, cost ledger, cache
+  hit, snapshot, dan pass lineage tersimpan, lalu bisa dibaca dengan satu
+  tool.
+
+Status di host ini, diverifikasi 2026-10-20:
+
+| Item | Nilai |
 |---|---|
 | Target dsh | developer preview `0.2.0-rc.2`, commit `23c78fcdd5ee0b497a77ca356608c51093c74bb9` |
 | Runtime | Cordis, TypeScript, ESM only |
-| Tools | 92, covering 91 spec ids |
-| Hooks | 5 (`agent/pre-step`, `tools/pre-execute`, `tools/result`, `llm/stream`, `session/event`) |
+| Tool | 92, mencakup 91 spec id |
+| Hook | 5 (`agent/pre-step`, `tools/pre-execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget` |
-| License | MIT |
+| Test | 271 di 95 suite, semuanya lulus |
+| Lisensi | MIT |
 
-Coverage of the 100 specs in `sumber100specs.md`:
+Cakupan 100 spec di `sumber100specs.md`:
 
-| Class | Count | Where |
+| Kelas | Jumlah | Bentuk |
 |---|---|---|
-| Tool-backed | 91 | `fable51_<name>` on the tool surface (92 tools; spec 11 and spec 100 each carry a second tool) |
-| Service method driven by a hook | 9 | specs 4, 6, 10, 15, 18, 43, 55, 58, 96 |
-| Not implemented | 0 | — |
+| Punya tool sendiri | 91 | tool `fable51_<nama>` (92 tool; spec 11 punya tool kedua) |
+| Method service yang dipicu hook | 9 | spec 4, 6, 10, 15, 18, 43, 55, 58, 96 |
+| Tidak diimplementasikan | 0 | tidak ada |
 
-Every spec in the inventory is now backed by something that runs. Read
-[What enforces and what only reports](#what-enforces-and-what-only-reports)
-before relying on a spec as a control: several are classifiers, not gates.
+---
 
-## Install
+## Pasang
 
-Development install into a scratch profile (the pattern used by other local
-plugins here: a `link:` dependency plus a `dsh.profile.bundles` entry):
+Development install ke profile (pola yang dipakai plugin lokal lain di sini:
+dependensi `link:` plus entri `dsh.profile.bundles`):
 
 ```jsonc
 // <profile>/package.json
@@ -43,71 +53,46 @@ plugins here: a `link:` dependency plus a `dsh.profile.bundles` entry):
 ```
 
 ```sh
-pnpm install                       # in the profile directory
-dsh --profile <name> --dump-config # entry id must appear: fable-5-1
+pnpm install                       # di direktori profile
+dsh --profile <nama> --dump-config # entry id harus muncul: fable-5-1
 ```
 
-For an external host install, the peer dependencies resolve from the host tree.
-Registry publish is optional; `file:` and `link:` are the supported dev paths.
+Untuk install ke host eksternal, peer dependency resolve dari tree host.
+Registry publish opsional; `file:` dan `link:` jalur dev yang didukung.
 
-## Activate
+## Aktif
 
-The bundle is a class plugin. `lib/index.js` default-exports `Fable51Policy`,
-which registers as `ctx.fable51` and wires the hooks and tools in its
-constructor. Activation is observable: the service logs a line containing
-`fable-5-1 loaded` and the number of registered tools, and the tools appear in
+Bundle ini plugin class. `lib/index.js` default-export `Fable51Policy`, yang
+register sebagai `ctx.fable51` dan menyambungkan hook dan tool di
+constructor-nya. Aktivasi bisa diamati: service mencatat baris berisi
+`fable-5-1 loaded` dan jumlah tool yang terdaftar, dan tool-nya muncul di
 `ctx.tools.schemas()`.
 
-If a required service (`tools`, `llm`, `sessions`) is missing, the plugin waits
-instead of running, which is documented dsh behavior. Verify activation; do not
-assume it from a successful install.
+Kalau salah satu service yang di-inject (`tools`, `llm`, `sessions`) belum
+ada, plugin menunggu, bukan gagal diam-diam. Verifikasi aktivasi, jangan
+berhenti pada install yang sukses.
 
-## Use
+## Pakai
 
-| Route | What you do |
+| Jalur | Yang kamu lakukan |
 |---|---|
-| Skill | Ask for `fable-5-1-discipline`. It orders stage map, fork, verify, merge, so you do not need tool names. |
-| Manual | Call one tool for one check. Common ones: `fable51_verification-gates`, `fable51_stage-graph-dag`, `fable51_sandbox-boundaries`, `fable51_worklog-format`. |
-| CLI | `fable51 inspect` renders the live service state; `fable51 advise-budget <taskClass>` recommends a budget config. |
-
-`PLAYBOOK.md` has the full tool map and the operator procedures.
-
-### CLI
+| Skill | Minta `fable-5-1-discipline`. Dia yang mengurutkan stage map, fork, verifikasi, merge, jadi kamu tidak perlu tahu nama tool. |
+| Tool | Panggil satu tool untuk satu cek. Yang sering dipakai: `fable51_verification-gates`, `fable51_stage-graph-dag`, `fable51_sandbox-boundaries`, `fable51_worklog-format`, `fable51_inspect`. |
+| CLI | `fable51 inspect` menampilkan state bundle tanpa agent. `fable51 advise-budget <taskClass>` merekomendasikan config budget. |
 
 ```sh
-pnpm build                        # emits lib/, including lib/cli.js
+pnpm build                        # emits lib/, termasuk lib/cli.js
 
-fable51 inspect                              # ASCII: policies, lineage, costs, cache, snapshots, config
-fable51 inspect --format json                # the same state as JSON
-fable51 inspect --include-worklog --include-gate-log
-
-fable51 advise-budget multihop               # recommended stageTokenBudget, maxForkDepth, effortTier
-fable51 advise-budget search --format json
-fable51 advise-budget open --history-window 200 --min-samples 5
+fable51 inspect
+fable51 inspect --format json
+fable51 advise-budget multihop
 ```
 
-`fable51 inspect` is read-only. It shows two scopes side by side: the
-**run scope** (stage budget, effort tier, fork window) belongs to one session,
-and the **shared scope** (policy registry, cost ledger, cache, snapshots,
-lineage) belongs to the host.
+`HOWTOUSE.md` punya peta 92 tool, prosedur operator, dan perintah verifikasi.
 
-The CLI boots its own bundle, so it shows the shape of a bundle, not the live
-state of a host that is already running. To see a running host's state, call
-`fable51_inspect` from inside the agent — the tool then reports that host's
-session and its shared trail.
+## Kontrak hasil
 
-`fable51 advise-budget` derives its recommendation from the cost ledger
-(`spec 11`, `spec 60`): per-stage p50/p90 token and latency quantiles, scaled by
-a task-class multiplier, with a confidence label from the sample count. With an
-empty ledger it falls back to task-class defaults and reports `low` confidence —
-the recommendation is then a floor, not a measurement.
-
-The CLI boots a real Cordis host with the real dsh services, so it needs the
-bundle's peer dependencies resolvable at run time.
-
-## Result contract
-
-Every tool returns the same envelope:
+Semua tool balas envelope yang sama:
 
 ```json
 {
@@ -121,26 +106,27 @@ Every tool returns the same envelope:
 }
 ```
 
-`ok` is `false` for a rejected argument or a tool failure, never a throw into
-the host. `verdict` can only fall to `unverified`: a tool that reports
-`pass:false`, `missing[]`, or `unverified[]` does not come back as `verified`.
-`rerun` is `true` when the answer came from the idempotency cache. Effectful
-tools always re-execute; the cache covers pure computations only.
+`ok` jadi `false` untuk argumen yang ditolak atau tool yang gagal, tidak pernah
+throw ke host. `verdict` hanya bisa turun ke `unverified`: tool yang melaporkan
+`pass:false`, `missing[]`, atau `unverified[]` tidak kembali sebagai
+`verified`. `rerun` jadi `true` kalau jawabannya datang dari cache
+idempotency. Tool effectful selalu eksekusi ulang, cache hanya untuk
+perhitungan murni.
 
-The host registry validates the returned envelope against its declared schema.
-It does not validate input arguments, so a wrong argument schema shows up at
-call time, not at registration time.
+Registry host memvalidasi envelope yang dikembalikan terhadap schema yang
+dideklarasikan. Registry tidak memvalidasi argumen input, jadi skema yang
+salah baru kelihatan saat pemanggilan, bukan saat registrasi.
 
 ## Config
 
-Config is optional and partial: `resolveConfig` deep-merges your object onto the
-full defaults, then validates. Defaults are not a silent fallback. An unknown
-key, a wrong type, an out-of-range value, or unordered context thresholds throws
-`ConfigError` with the exact field path, and a supplied `config:` value that is
-not an object is rejected instead of being read as empty. A typo cannot merge
-into nothing and read as active.
+Config opsional dan partial: `resolveConfig` melakukan deep-merge objek kamu
+di atas default lengkap, lalu validasi. Default bukan fallback diam-diam. Key
+asing, tipe salah, nilai di luar rentang, atau threshold context yang tidak
+urut melempar `ConfigError` dengan path field yang tepat, dan nilai `config:`
+yang bukan objek ditolak, bukan dibaca sebagai kosong. salah ketik tidak bisa
+merge jadi tidak ada lalu terbaca aktif.
 
-| Block | Specs | Keys and defaults |
+| Blok | Spec | Key dan default |
 |---|---|---|
 | `context` | 1 | `compactAt 0.70`, `dropAt 0.85`, `spillAt 0.90`, `spillPath .dsh/fable-spill` |
 | `effort` | 6, 11 | `defaultTier mid`, `escalateOn [search, multihop, ambiguity]`, `costCeiling 2000000` |
@@ -152,130 +138,124 @@ into nothing and read as active.
 | `observability` | 24, 79 | `traceLevel stage`, `logFormat line` |
 | `registry` | 100 | `policies []` |
 
-Supply changes through the bundle patch entry (`cordis.patch.yml` `config:`
-block) or a profile overlay.
+## Yang menahan vs yang cuma lapor
 
-## What enforces and what only reports
+Kebanyakan spec mengklasifikasi dan melaporkan, tidak memblokir. Tahu mana yang
+mana sebelum memakainya sebagai kontrol.
 
-Most specs classify and report; they do not block. Know which is which before
-you rely on one as a control.
-
-| Enforces | How |
+| Menahan | Bagaimana |
 |---|---|
-| `sandbox-boundaries` (26) | An escape is logged with verdict `discarded`; when `escapeAction: 'abort'`, the tool throws and the envelope becomes `ok:false` instead of a result that looks usable. An empty allow-list allows reads and denies writes. A declared list is exact-match. |
-| `human-in-the-loop` (27) | Fails closed: an omitted `irreversible`, `external`, or `estimatedCost` still requests approval. It only runs when the model calls it. |
-| Bandwidth (55) | The `tools/pre-execute` waterfall holds a parallel-pass slot. Over `maxConcurrentPasses`, the excess **queues** — the call waits for a slot instead of being refused. A nested call takes no slot, so a dependency chain cannot deadlock on the cap. |
-| Hook fault isolation | A fault in `agent/pre-step` or `llm/stream` is logged, then the step or stream continues. A plugin cannot veto a turn. |
+| `sandbox-boundaries` (26) | Escape dicatat dengan verdict `discarded`. Kalau `escapeAction: 'abort'`, tool melempar dan envelope jadi `ok:false`, bukan hasil yang kelihatan pakai. Allow-list kosong mengizinkan read dan menolak write. Allow-list yang dideklarasikan dicocokkan persis. |
+| `human-in-the-loop` (27) | Fail-closed: `irreversible`, `external`, atau `estimatedCost` yang tidak dikirim tetap minta persetujuan. Hanya jalan kalau model memanggil tool. |
+| Bandwidth (55) | Waterfall `tools/pre-execute` memegang satu slot pass paralel per session. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
+| Isolasi fault hook | Fault di `agent/pre-step` atau `llm/stream` dicatat, lalu step atau stream lanjut. Plugin tidak bisa membatalkan turn. |
 
-| Reports only | Consequence |
+| Cuma lapor | Konsekuensi |
 |---|---|
-| `context-management` (1) | The compact, drop, or spill action is classified and logged. No message list is truncated or spilled. |
-| Effort escalation (6) | `effortTier` is raised and logged. No model parameter changes. |
-| Backpressure (71) | Reported from a queue depth the caller supplies; not measured. Spec 55 measures the real queue. |
-| Progress reporting (4) | The run's progress trail is recorded and shown. It narrates a stage transition and a gate failure; a per-step line is deliberately absent. |
-| Tool cache | Idempotent replay covers pure computations. Tools marked `effectful` always re-execute. |
+| `context-management` (1) | Aksi compact, drop, atau spill diklasifikasi dan dicatat. Tidak ada message list yang dipotong atau di-spill. |
+| Eskalasi effort (6) | `effortTier` naik dan dicatat. Parameter model tidak berubah. |
+| `reasoning-backpressure` (71) | Dilaporkan dari queue depth yang dikirim pemanggil, tidak diukur sendiri. Spec 55 yang mengukur antrean sungguhan. |
+| Progress reporting (4) | Jejak progres run dicatat dan ditampilkan. Menarasi transisi stage dan kegagalan gate. Baris per-step sengaja tidak ada. |
+| Tool cache | Replay idempotent menutup perhitungan murni. Tool `effectful` selalu eksekusi ulang. |
 
-In short: do not use this bundle as a sandbox or an approval mechanism. It is a
-ledger, a classifier, and a discipline helper. The controls that bind are dsh's
-own permissions.
+Singkatnya: jangan pakai bundle ini sebagai sandbox atau approval mechanism.
+Ini ledger, classifier, dan discipline helper. Kontrol yang benar-benar
+mengikat adalah permission DSH sendiri.
 
-## Guarantees
+## Jaminan
 
-- **Surface-verified integration.** Every hook and API this bundle touches was
-  checked against the pinned dsh commit's source: `agent/pre-step` (waterfall,
-  `PreStepDecision`), `tools/pre-execute` (waterfall, `PreToolDecision`),
-  `tools/result` (emit), `llm/stream` (waterfall),
-  `session/event` plus `session/created` and `session/disposed` (emit),
-  `ctx.tools.register(definition)` returning a disposer. `RECON.md` holds the
-  file and line evidence.
-- **Uniform envelope.** Every tool returns
-  `{ok, spec, output, verdict, unverified, rerun, gates}`. Rejected arguments
-  come back as `ok:false`, not as an exception.
-- **Fail-loud config** with field-path errors. The policy registry is immutable:
-  a change is a new version, and a duplicate id plus version is an error.
-- **Append-only pass lineage** with prune, GC, and audit protection. A pass that
-  references an unknown parent is rejected.
-- **Bounded state.** The worklog, gate log, cost ledger, reason cache, and
-  snapshot store evict oldest-first. Per-stage cost totals survive eviction. The
-  per-turn stage token budget resets on `turn/start`, for that session only.
-  Each run's episode is bounded too: at most 64 live sessions, 200 progress
-  records per run.
-- **Encoding hygiene:** LF, UTF-8 without BOM, final newline on every text file.
-- **Agent-loop verified.** Beyond the suites, the bundle was run inside a real
-  headless session: a model called `fable51_chain-vs-tree` and received the
-  real envelope, and specs 4 and 55 were read back through `fable51_inspect`
-  in the same run. The evidence is the session log, not a claim.
+- **Integrasi terverifikasi di permukaan.** Setiap hook dan API yang dipakai
+  bundle ini dicek terhadap source commit dsh yang dipin: `agent/pre-step`
+  (waterfall, `PreStepDecision`), `tools/pre-execute` (waterfall,
+  `PreToolDecision`), `tools/result` (emit), `llm/stream` (waterfall),
+  `session/event` plus `session/created` dan `session/disposed` (emit),
+  `ctx.tools.register(definition)` yang mengembalikan disposer. Bukti file dan
+  baris ada di `RECON.md`.
+- **Envelope seragam.** Semua tool mengembalikan
+  `{ok, spec, output, verdict, unverified, rerun, gates}`. Argumen yang
+  ditolak datang sebagai `ok:false`, bukan exception.
+- **Config fail-loud** dengan error berpath. Policy registry immutable:
+  perubahan berarti versi baru, dan id plus versi yang sama adalah error.
+- **Pass lineage append-only** dengan prune, GC, dan audit protection. Pass
+  yang menyebut parent yang tidak dikenal ditolak.
+- **State terbatas.** Worklog, gate log, cost ledger, reason cache, dan
+  snapshot store meng-evict yang tertua lebih dulu. Total biaya per stage
+  bertahan melewati eviction. Budget token per stage me-reset pada
+  `turn/start`, untuk session itu saja. Episode tiap run juga terbatas:
+  maksimal 64 session hidup, 200 progress record per run.
+- **Kebersihan encoding:** LF, UTF-8 tanpa BOM, final newline di setiap file
+  teks.
+- **Terverifikasi lewat agent loop.** Selain suite, bundle ini dijalankan di
+  dalam sesi headless sungguhan: model memanggil `fable51_chain-vs-tree` dan
+  menerima envelope asli, lalu spec 4 dan 55 dibaca balik lewat
+  `fable51_inspect` di run yang sama. Buktinya log sesi, bukan klaim.
 
-## Testing
+## Test
 
 ```sh
 pnpm test        # unit + integration + e2e, node:test via tsx
-pnpm typecheck   # tsc -b, then the test project
-pnpm build       # emit lib/ (including lib/cli.js, the CLI entry point)
+pnpm typecheck   # tsc -b, lalu project test
+pnpm build       # emit lib/, termasuk lib/cli.js
 ```
 
-At commit `3b701d6`: 227 tests in 89 suites pass, and `pnpm typecheck` exits 0.
-With the visualizer, budget advisor, CLI, per-session episodes, and specs 4 and
-55: 271 tests in 95 suites pass.
-The integration and e2e suites load the bundle into a real Cordis host with the
-real dsh services (`dsh-tools`, `dsh-llm`, `dsh-session`, `dsh-system-prompt`)
-and drive real event dispatches. `pnpm typecheck` covers `test/**` as well as
-`src/**`.
+Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
+0. Dengan visualizer, budget advisor, CLI, episode per-session, serta spec 4
+dan 55: **271 test di 95 suite lulus**.
 
-## Known limits
+Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
+service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
+`dsh-system-prompt`) dan memanggil dispatcher event asli.
 
-- **The audit trail is per host, the budgets are per session.** One
-  `ctx.fable51` serves every session in the host, so the worklog, gate log,
-  cost ledger, reason cache, snapshot index, and pass lineage are shared: a
-  long run is audited at host level, and `fable51 inspect` shows that shared
-  picture. The counters that enforce a run — stage token budget, fork and
-  merge allowance, escalation ladder, replan count, effort tier, convergence
-  window — are keyed by session. A `turn/start` resets only its own session's
-  budget, so one session can no longer clear another's.
-  The session identity comes from the host: `Agent.session.id` for the
-  pre-step hook and the tool execution, `GenerateOptions.sessionId` for the
-  stream hook, and the session object for the lifecycle events. A call the
-  host attributes to no session lands in a `default` bucket of its own, which
-  no session's turn resets.
-- **No CI and no lockfile.** `lib/` is gitignored, so the artifact a host runs is
-  whatever was built locally. The same applies to the CLI: `bin/fable51.js` is a
-  shim onto `lib/cli.js`, so it needs a `pnpm build` first.
-- **The agent-loop path is now executed end-to-end.** Earlier drafts of this
-  README recorded that the full path had never run, because the scratch
-  profile's API key was invalid. That blocker is gone: on 2026-10-20
-  `dsh --profile fable-test headless` ran a real task, the model called
-  `fable51_chain-vs-tree`, and the bundle returned the real envelope
-  `{ok:true, spec:"35", output:{topology:"tree", branchFactor:2},
-  verdict:"verified"}` — confirmed in the session log, not inferred.
-  Specs 4 and 55 were verified through the same path.
-- **The host serializes model-driven tool calls.** Verified on the pinned dsh
-  commit: a model that emits two tool calls in one assistant message has them
-  dispatched one after the other — the session log shows `tool/call`,
-  `tool/result`, `tool/call`, `tool/result` inside a single step. The
-  bandwidth cap (55) therefore never engages for calls a model makes; it binds
-  programmatic dispatch, where a composite tool fans out concurrent calls.
-  `fable51 inspect` reports `peak: 1` on a model-driven run for this reason.
-- **Spec definitions 21 and 23 to 26** are operator-authored additions.
-  `PRD_REVISI.md` section 11 records the cross-check against
-  `sumber100specs.md`: 100 ids and names match. The "Kills" column in the older
-  spec document is an operator annotation on top of the source rules.
-- **Runtime imports** are `@deepseek-ai/cordis` (service and context),
-  `@deepseek-ai/schemastery` (the `Config` schema), and `node:crypto`. The
-  `dsh-llm`, `dsh-agent`, and `dsh-session` imports are type-only.
-  `schemastery` resolves through the host's `dsh-tools` dependency and is not
-  declared directly in this package's `peerDependencies`.
+## Batas yang harus kamu tahu
 
-## Docs
+- **Audit trail per-host, budget per-session.** Satu `ctx.fable51` melayani
+  semua session di host, jadi worklog, cost ledger, reason cache, snapshot
+  index, dan pass lineage dibagi. Audit jangka panjang memang di level host,
+  dan `fable51 inspect` menampilkan gambaran itu. Yang menegakkan run (stage
+  token budget, jatah fork/merge, escalation ladder, replan count, effort
+  tier, convergence window) di-key per session. `turn/start` hanya me-reset
+  budget session-nya sendiri, jadi satu session tidak bisa menghapus budget
+  session lain.
 
-| File | Role |
+  Identitas session datang dari host: `Agent.session.id` untuk pre-step hook
+  dan eksekusi tool, `GenerateOptions.sessionId` untuk stream hook, dan objek
+  session untuk event lifecycle. Call yang tidak diatribusikan host masuk ke
+  bucket `default` tersendiri, yang tidak di-reset turn session mana pun.
+- **Host men-serialisasi tool call yang digerakkan model.** Terverifikasi di
+  commit dsh yang dipin: model yang mengirim dua tool call dalam satu pesan
+  assistant tetap didispatch satu per satu. Log sesi menunjukkan `tool/call`,
+  `tool/result`, `tool/call`, `tool/result` di dalam satu step. Cap bandwidth
+  (55) karena itu tidak pernah aktif untuk call yang dibuat model, hanya untuk
+  dispatch programatik, tempat tool komposit memancarkan call paralel.
+  `fable51 inspect` melaporkan `peak: 1` di run yang digerakkan model karena
+  itu.
+- **Tidak ada CI dan tidak ada lockfile.** `lib/` ada di `.gitignore`, jadi
+  artifact yang dijalankan host adalah apa pun yang ter-build lokal. Berlaku
+  juga untuk CLI: `bin/fable51.js` adalah shim ke `lib/cli.js`, jadi butuh
+  `pnpm build` lebih dulu.
+- **Registry tidak memvalidasi argumen input.** Skema yang rusak baru
+  ketahuan saat tool dipanggil, bukan saat registrasi.
+- **Definisi spec 21 dan 23 sampai 26** adalah tambahan operator.
+  `PRD_REVISI.md` bagian 11 mencatat cross-check terhadap `sumber100specs.md`:
+  100 id dan nama cocok. Kolom "Kills" di dokumen spec lama adalah anotasi
+  operator di atas aturan sumber.
+- **Import runtime** adalah `@deepseek-ai/cordis` (service dan context),
+  `@deepseek-ai/schemastery` (schema `Config`), dan `node:crypto`. Import
+  `dsh-llm`, `dsh-agent`, dan `dsh-session` hanya untuk tipe.
+  `schemastery` resolve lewat dependensi `dsh-tools` host dan tidak
+  dideklarasikan langsung di `peerDependencies` paket ini.
+
+## Dokumen
+
+| File | Isi |
 |---|---|
-| `PRD.md` | As-built requirements, evidence, and open questions |
-| `PLAYBOOK.md` | Operator guide: install, config, tool map, limits |
-| `PRD_REVISI.md` | Pre-code specification v0.1.1 and the 100-spec mapping |
-| `sumber100specs.md` | 100-spec inventory: id, core rule, trigger |
-| `RECON.md` | File and line evidence for each dsh surface |
-| `cordis.patch.yml` | Bundle patch entry |
+| `HOWTOUSE.md` | Panduan operator: pasang, pakai, peta 92 tool, config, verifikasi |
+| `PRD.md` | Requirements as-built, bukti, dan pertanyaan terbuka |
+| `PRD_REVISI.md` | Spesifikasi pra-kode v0.1.1 dan pemetaan 100 spec |
+| `sumber100specs.md` | Inventaris 100 spec: id, aturan inti, pemicu |
+| `RECON.md` | Bukti file dan baris untuk tiap permukaan dsh |
+| `cordis.patch.yml` | Entri patch bundle |
 
-## License
+## Lisensi
 
-MIT. See `LICENSE`.
+MIT. Lihat `LICENSE`.
