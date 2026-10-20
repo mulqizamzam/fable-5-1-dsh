@@ -12,6 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { Fable51Policy } from '../policy-service.ts'
+import { sessionKeyFromAgent } from '../state/session-key.ts'
 
 interface PreStepPayload {
   agent: Agent
@@ -67,11 +68,15 @@ export function wireAgentPreStep(ctx: Context): void {
       const messages = Array.isArray(payload.messages) ? payload.messages : []
       const text = messages.map(messageText).join(' ')
       const signals = svc.config.effort.escalateOn.filter((signal) => text.includes(signal))
+      // The escalation belongs to the session whose agent took the step: one
+      // session's signal must not raise another session's effort tier.
+      const key = sessionKeyFromAgent(payload.agent)
+      const episode = svc.episode(key)
       // Without this guard the accumulated transcript re-triggers the same signal
       // on every later step and pins the tier at `max` within a single task.
-      if (signals.length > 0 && svc.effortEscalated !== true) {
-        svc.effortEscalated = true
-        const { from, to, escalated } = svc.escalateEffort()
+      if (signals.length > 0 && episode.effortEscalated !== true) {
+        episode.effortEscalated = true
+        const { from, to, escalated } = svc.escalateEffort(key)
         if (escalated) {
           svc.recordWorklog({
             stage,

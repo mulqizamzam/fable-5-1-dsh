@@ -21,6 +21,7 @@ import { PassLineage } from './state/lineage.ts'
 import { PolicyRegistry } from './state/registry.ts'
 import { ReasonCache } from './state/cache.ts'
 import { SnapshotStore, type Snapshot } from './state/snapshots.ts'
+import { EpisodeStore, type EpisodeState, type EffortTier, type ReasoningMode } from './state/episode.ts'
 import type { GateResult } from './types/gate.ts'
 import type { PassScore, PassVerdict, ReasoningPass } from './types/pass.ts'
 
@@ -48,8 +49,7 @@ export type ProvenanceTag =
 
 export type EscalationRung = 'retry' | 'replan' | 'downgrade' | 'ask'
 
-/** Reasoning-mode label (spec 15): interleaved thinking is not parallel reasoning. */
-export type ReasoningMode = 'parallel' | 'sequential' | 'interleaved'
+export type { EffortTier, EpisodeState, ReasoningMode }
 
 export interface ApprovalRequest {
   readonly action: string
@@ -157,37 +157,23 @@ export class Fable51Policy extends Service {
   readonly worklog: WorklogEntry[] = []
   readonly costLedger: CostLedgerEntry[] = []
 
+  /**
+   * Per-session run state (specs 6, 14, 15, 22, 28, 58, 96).
+   *
+   * The counters describe one run, not the host: two sessions in one host
+   * used to share them, so one session's turn/start reset the other's stage
+   * budget and fork allowance. The audit rings above stay host-wide — a long
+   * run is audited at host level — but a budget belongs to the run spending it.
+   */
+  readonly episodes: EpisodeStore
+
   /** Handoff id discriminator: a constant id made every session overwrite the last. */
   private handoffSeq = 0
-
-  /** Per-stage token accounting (spec 22). */
-  stageTokens = new Map<string, number>()
-  /** Escalation ladder cursor (spec 28): one rung per failure. */
-  rung = 0
-  /** Replan counter (spec 14). */
-  replans = 0
-  /** Fork/merge budget counters (spec 96). */
-  forksThisStage = 0
-  mergesThisStage = 0
-  /** Current effort tier, escalated on task signal (spec 6). */
-  effortTier: Fable51Config['effort']['defaultTier']
-  /** Spec 6 escalates once per task; the transcript keeps the signal for every later step. */
-  effortEscalated = false
-  /** Reasoning-mode label per pass id (spec 15): parallel ≠ sequential ≠ interleaved. */
-  readonly passLabels = new Map<string, ReasoningMode>()
-  /** Per-turn convergence distances, oldest first (spec 58). */
-  readonly turnDistances: number[] = []
-  /** Turn index of the most recent new-evidence event, null when none (spec 58). */
-  lastEvidenceTurn: number | null = null
-  /** Turn counter driving the convergence window (spec 58). */
-  turnCount = 0
-  /** Per-stage token count of the previous turn, for the convergence distance (spec 58). */
-  readonly previousTurnTokens = new Map<string, number>()
 
   constructor(ctx: Context, config: Record<string, unknown> = {}) {
     super(ctx, 'fable51')
     this.config = resolveConfig(config)
-    this.effortTier = this.config.effort.defaultTier
+    this.episodes = new EpisodeStore(this.config.effort.defaultTier)
     for (const policy of this.config.registry.policies) this.registry.register(policy)
     // PRD §3: hooks and tools wire at service construction; cordis disposes
     // listeners and tool registrations with the owning fiber automatically.
@@ -199,6 +185,14 @@ export class Fable51Policy extends Service {
     ctx.logger('fable51').info(`fable-5-1 loaded — ${toolCount} tools registered`)
   }
 
+  /**
+   * The run state for one session. Created on first use; a session that has
+   * never run gets a fresh episode rather than a shared one.
+   */
+  episode(key: string): EpisodeState {
+    return this.episodes.get(key)
+  }
+
   // ---- spec 1: context thresholds ----
   contextAction(fillRatio: number): 'ok' | 'compact' | 'drop' | 'spill' {
     if (fillRatio >= this.config.context.spillAt) return 'spill'
@@ -208,113 +202,125 @@ export class Fable51Policy extends Service {
   }
 
   // ---- spec 22: per-stage token budget ----
-  addStageTokens(stage: string, tokens: number): { used: number; alert: boolean; stop: boolean } {
-    const used = (this.stageTokens.get(stage) ?? 0) + tokens
-    this.stageTokens.set(stage, used)
+  addStageTokens(key: string, stage: string, tokens: number): { used: number; alert: boolean; stop: boolean } {
+    const episode = this.episodes.get(key)
+    const used = (episode.stageTokens.get(stage) ?? 0) + tokens
+    episode.stageTokens.set(stage, used)
     const limit = this.config.budget.stageTokenBudget
     return { used, alert: used >= limit * 0.8, stop: used >= limit }
   }
 
   // ---- spec 14 / 28: replan budget + escalation ladder ----
-  replan(): { count: number; escalate: boolean } {
-    this.replans += 1
-    return { count: this.replans, escalate: this.replans > this.config.budget.maxReplans }
+  replan(key: string): { count: number; escalate: boolean } {
+    const episode = this.episodes.get(key)
+    episode.replans += 1
+    return { count: episode.replans, escalate: episode.replans > this.config.budget.maxReplans }
   }
 
-  nextRung(): EscalationRung {
-    const rung = LADDER[Math.min(this.rung, LADDER.length - 1)]!
-    this.rung += 1
+  nextRung(key: string): EscalationRung {
+    const episode = this.episodes.get(key)
+    const rung = LADDER[Math.min(episode.rung, LADDER.length - 1)]!
+    episode.rung += 1
     return rung
   }
 
   // ---- spec 96: fork/merge budget ----
-  canFork(depth: number): boolean {
-    return depth < this.config.budget.maxForkDepth && this.forksThisStage < this.config.budget.maxForksPerStage
+  canFork(key: string, depth: number): boolean {
+    const episode = this.episodes.get(key)
+    return depth < this.config.budget.maxForkDepth && episode.forksThisStage < this.config.budget.maxForksPerStage
   }
 
-  canMerge(): boolean {
-    return this.mergesThisStage < this.config.budget.maxMergesPerStage
+  canMerge(key: string): boolean {
+    return this.episodes.get(key).mergesThisStage < this.config.budget.maxMergesPerStage
   }
 
   /**
-   * Per-session episode state (specs 14/28/58/96). The service outlives the
-   * session, so without this reset a fresh session inherits the previous
-   * session's escalation rung, replan count and convergence window.
+   * Per-session episode state (specs 14/28/58/96).
+   *
+   * The service outlives the session, so a fresh session must not inherit the
+   * previous run's escalation rung, replan count or convergence window. The
+   * reset is scoped to ONE session: resetting every session at once is the
+   * bug this store exists to remove.
    */
-  resetEpisodeState(): void {
-    this.rung = 0
-    this.replans = 0
-    this.forksThisStage = 0
-    this.mergesThisStage = 0
-    this.effortTier = this.config.effort.defaultTier
-    this.effortEscalated = false
-    this.passLabels.clear()
-    this.turnDistances.length = 0
-    this.lastEvidenceTurn = null
-    this.turnCount = 0
-    this.previousTurnTokens.clear()
-    this.stageTokens.clear()
+  resetEpisodeState(key: string): void {
+    this.episodes.resetSession(key)
+  }
+
+  /** Reset one session's turn-scoped state: stage budget, fork window, effort escalation. */
+  resetTurnState(key: string): void {
+    this.episodes.resetTurn(key)
   }
 
   /** Consume one fork slot for the stage; false when the per-stage cap is spent (spec 96). */
-  recordFork(): boolean {
-    if (this.forksThisStage >= this.config.budget.maxForksPerStage) return false
-    this.forksThisStage += 1
+  recordFork(key: string): boolean {
+    const episode = this.episodes.get(key)
+    if (episode.forksThisStage >= this.config.budget.maxForksPerStage) return false
+    episode.forksThisStage += 1
     return true
   }
 
   /** Consume one merge slot for the stage; false when the per-stage cap is spent (spec 96). */
-  recordMerge(): boolean {
-    if (this.mergesThisStage >= this.config.budget.maxMergesPerStage) return false
-    this.mergesThisStage += 1
+  recordMerge(key: string): boolean {
+    const episode = this.episodes.get(key)
+    if (episode.mergesThisStage >= this.config.budget.maxMergesPerStage) return false
+    episode.mergesThisStage += 1
     return true
   }
 
   // ---- spec 6: effort escalation ----
-  escalateEffort(): { from: string; to: string; escalated: boolean } {
-    const from = this.effortTier
+  escalateEffort(key: string): { from: string; to: string; escalated: boolean } {
+    const episode = this.episodes.get(key)
+    const from = episode.effortTier
     const index = EFFORT_LADDER.indexOf(from)
-    this.effortTier = EFFORT_LADDER[Math.min(index + 1, EFFORT_LADDER.length - 1)]!
-    return { from, to: this.effortTier, escalated: this.effortTier !== from }
+    episode.effortTier = EFFORT_LADDER[Math.min(index + 1, EFFORT_LADDER.length - 1)]!
+    return { from, to: episode.effortTier, escalated: episode.effortTier !== from }
   }
 
   // ---- spec 15: pass-mode labeling ----
-  labelPass(id: string, mode: ReasoningMode): void {
-    this.passLabels.set(id, mode)
+  labelPass(key: string, id: string, mode: ReasoningMode): void {
+    this.episodes.get(key).passLabels.set(id, mode)
   }
 
   // ---- spec 58: convergence tracking ----
   /** Record one turn's distance from the previous turn (relative token delta). */
-  recordTurnDistance(distance: number): void {
+  recordTurnDistance(key: string, distance: number): void {
+    const episode = this.episodes.get(key)
     // capped at the configured window too, so a window wider than the floor stays measurable
-    pushCapped(this.turnDistances, distance, Math.max(TURN_DISTANCES_CAP, this.config.reasoning.convergenceTurns))
-    this.turnCount += 1
+    pushCapped(episode.turnDistances, distance, Math.max(TURN_DISTANCES_CAP, this.config.reasoning.convergenceTurns))
+    episode.turnCount += 1
   }
 
   /** Mark that new evidence arrived this turn; blocks convergence (spec 58). */
-  markEvidence(): void {
-    this.lastEvidenceTurn = this.turnCount
+  markEvidence(key: string): void {
+    const episode = this.episodes.get(key)
+    episode.lastEvidenceTurn = episode.turnCount
   }
 
   /** Converged = the last N turn distances are below δ AND no new evidence since (spec 58). */
-  converged(): { converged: boolean; window: number; delta: number; newEvidence: boolean } {
+  converged(key: string): { converged: boolean; window: number; delta: number; newEvidence: boolean } {
+    const episode = this.episodes.get(key)
     const n = this.config.reasoning.convergenceTurns
     const delta = this.config.reasoning.convergenceDelta
-    const window = this.turnDistances.slice(-n)
-    const newEvidence = this.lastEvidenceTurn !== null && this.turnCount - this.lastEvidenceTurn < n
+    const window = episode.turnDistances.slice(-n)
+    const newEvidence = episode.lastEvidenceTurn !== null && episode.turnCount - episode.lastEvidenceTurn < n
     const stable = window.length >= n && window.every((distance) => distance < delta)
     return { converged: stable && !newEvidence, window: window.length, delta, newEvidence }
   }
 
   // ---- specs 10/18: handoff persistence + rollback target ----
-  /** Persist the handoff state: stage map, counters, and the last checkpoint hash (spec 10). */
-  handoffSnapshot(id = `session-handoff-${++this.handoffSeq}`): Snapshot {
+  /**
+   * Persist the handoff state: stage map, counters, and the last checkpoint
+   * hash (spec 10). The counters are the session's own episode, so a handoff
+   * reports the run it belongs to.
+   */
+  handoffSnapshot(key: string, id = `session-handoff-${++this.handoffSeq}`): Snapshot {
+    const episode = this.episodes.get(key)
     return this.snapshots.create(id, {
       stageMap: this.worklog.map((entry) => entry.stage),
       gates: this.gateLog.length,
       worklog: this.worklog.length,
-      replans: this.replans,
-      rung: this.rung,
+      replans: episode.replans,
+      rung: episode.rung,
       lastHash: this.snapshots.latest()?.hash ?? 'sha256:none',
       pinnedVersions: this.config.determinism.pinnedVersions,
     })

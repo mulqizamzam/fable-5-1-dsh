@@ -15,6 +15,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import type { ReasoningPass } from '../../src/types/pass.ts'
+import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 async function setup() {
   const ctx = new Context()
@@ -75,13 +76,13 @@ describe('Gate 6 — synthetic session end-to-end', () => {
       svc.recordCost({ stage: 'reasoning', tokens: 1000, latencyMs: 50, riskWeight: 0, at: Date.now() })
       assert.deepEqual(svc.stageCost('reasoning'), { tokens: 1000, latencyMs: 50, risk: 0 })
       // --- escalation ladder advances one rung per failure (spec 28) ---
-      assert.equal(svc.nextRung(), 'retry')
-      assert.equal(svc.nextRung(), 'replan')
-      assert.equal(svc.nextRung(), 'downgrade')
+      assert.equal(svc.nextRung(DEFAULT_SESSION), 'retry')
+      assert.equal(svc.nextRung(DEFAULT_SESSION), 'replan')
+      assert.equal(svc.nextRung(DEFAULT_SESSION), 'downgrade')
       // --- replan budget: third replan escalates (spec 14) ---
-      assert.equal(svc.replan().escalate, false)
-      assert.equal(svc.replan().escalate, false)
-      assert.equal(svc.replan().escalate, true)
+      assert.equal(svc.replan(DEFAULT_SESSION).escalate, false)
+      assert.equal(svc.replan(DEFAULT_SESSION).escalate, false)
+      assert.equal(svc.replan(DEFAULT_SESSION).escalate, true)
       // --- provenance + partial delivery (specs 7, 20) ---
       assert.equal(svc.tag('the sky is blue', { kind: 'fetch', url: 'https://example.test' }), '[fetch:https://example.test] the sky is blue')
       // --- turn end: checkpoint + handoff (specs 10, 38) ---

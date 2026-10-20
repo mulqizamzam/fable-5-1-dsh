@@ -14,6 +14,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { budgetAdvisorTools } from '../../src/tools/budget-advisor.ts'
 import { defineTool } from '../../src/tools/shared.ts'
+import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 const TOOL_NAME = 'fable51_budget-advisor'
 
@@ -28,7 +29,7 @@ async function setup(): Promise<Context> {
   for (const spec of budgetAdvisorTools()) {
     const name = `fable51_${spec.name}`
     if (registered.has(name)) continue
-    ctx.tools.register(defineTool(spec, { service: ctx.fable51 }))
+    ctx.tools.register(defineTool(spec, { service: ctx.fable51, sessionKey: DEFAULT_SESSION }))
   }
   return ctx
 }

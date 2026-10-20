@@ -197,7 +197,7 @@ export function dagTools(): ToolSpec[] {
       },
       execute(args, env) {
         const { passId, deps } = args as { passId: unknown; deps: unknown }
-        const { service } = env
+        const { service, sessionKey } = env
         if (typeof passId !== 'string' || passId.length === 0) throw new Error('passId must be a non-empty string')
         if (service.lineage.get(passId) !== undefined) {
           throw new Error(`pass ${passId} is already recorded — lineage is append-only`)
@@ -228,7 +228,7 @@ export function dagTools(): ToolSpec[] {
         service.recordPass(pass)
         // Spec 15: label the pass's reasoning mode by its dependency shape —
         // a join of several branches is parallel, a single link is sequential.
-        service.labelPass(passId, unique.length > 1 ? 'parallel' : 'sequential')
+        service.labelPass(sessionKey, passId, unique.length > 1 ? 'parallel' : 'sequential')
         return { recorded: true, ancestors: service.lineage.ancestors(passId) }
       },
     },

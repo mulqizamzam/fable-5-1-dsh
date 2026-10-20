@@ -23,6 +23,7 @@ import Fable51Policy from '../../src/index.ts'
 import { reasoningCoreTools } from '../../src/tools/reasoning-core.ts'
 import { defineTool } from '../../src/tools/shared.ts'
 import { fingerprint } from '../../src/state/cache.ts'
+import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 const TOOL_NAMES = [
   'fable51_reasoning-forking',
@@ -51,7 +52,7 @@ async function setup(): Promise<Context> {
   for (const spec of reasoningCoreTools()) {
     const name = `fable51_${spec.name}`
     if (registered.has(name)) continue
-    ctx.tools.register(defineTool(spec, { service: ctx.fable51 }))
+    ctx.tools.register(defineTool(spec, { service: ctx.fable51, sessionKey: DEFAULT_SESSION }))
   }
   return ctx
 }
@@ -166,7 +167,7 @@ describe('spec 31 — reasoning-forking', () => {
       const fork = await runIdempotent(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 2 })
       assert.equal(fork.spec, '31')
       assert.equal(fork.output.decision, 'fork')
-      assert.equal(ctx.fable51.forksThisStage, 2, 'the repeated fork must consume the stage budget twice — a cache hit skipped recordFork')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).forksThisStage, 2, 'the repeated fork must consume the stage budget twice — a cache hit skipped recordFork')
       const merge = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 0 })
       assert.equal(merge.output.decision, 'merge')
       const keep = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 1, budgetLeft: 0 })
@@ -441,7 +442,7 @@ describe('spec 45 — merge-strategy', () => {
       assert.equal(union.spec, '45')
       assert.deepEqual(union.output.merged, ['a', 'b', 'c'])
       assert.equal(union.output.strategy, 'union')
-      assert.equal(ctx.fable51.mergesThisStage, 2, 'the repeated merge must consume the stage budget twice — a cache hit skipped recordMerge')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).mergesThisStage, 2, 'the repeated merge must consume the stage budget twice — a cache hit skipped recordMerge')
       const intersection = await run(ctx, 'fable51_merge-strategy', { strategy: 'intersection', sets })
       assert.deepEqual(intersection.output.merged, ['b', 'c'])
       const weighted = await run(ctx, 'fable51_merge-strategy', { strategy: 'weighted', sets: [['a', 'b'], ['b', 'a']] })

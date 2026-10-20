@@ -14,6 +14,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { visualizeTools } from '../../src/tools/visualize.ts'
 import { defineTool } from '../../src/tools/shared.ts'
+import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 const TOOL_NAME = 'fable51_inspect'
 
@@ -28,7 +29,7 @@ async function setup(): Promise<Context> {
   for (const spec of visualizeTools()) {
     const name = `fable51_${spec.name}`
     if (registered.has(name)) continue
-    ctx.tools.register(defineTool(spec, { service: ctx.fable51 }))
+    ctx.tools.register(defineTool(spec, { service: ctx.fable51, sessionKey: DEFAULT_SESSION }))
   }
   return ctx
 }
@@ -52,6 +53,7 @@ interface ToolOutcome {
 /** The inspect tool's inner output, typed so the assertions stay checked. */
 interface InspectOutput {
   ascii?: string
+  session: string
   policies: Array<{ id: string; version: string; owner: string; active: boolean; hash: string }>
   lineage: {
     totalPasses: number
@@ -123,6 +125,10 @@ describe('fable51 visualize tools', () => {
       assert.ok(ascii.includes('--- Cache ---'))
       assert.ok(ascii.includes('--- Snapshots ---'))
       assert.ok(ascii.includes('--- Config ---'))
+      // The two scopes must be named, so the operator knows which numbers are
+      // the run's and which are the host's.
+      assert.ok(ascii.includes('Run scope: session'), `expected the run scope line, got: ${ascii.slice(0, 200)}`)
+      assert.ok(ascii.includes('Shared scope: host'))
     } finally {
       await ctx.fiber.dispose()
     }
@@ -145,6 +151,9 @@ describe('fable51 visualize tools', () => {
       assert.ok(typeof out.cache === 'object')
       assert.ok(typeof out.snapshots === 'object')
       assert.ok(typeof out.config === 'object')
+      // The run scope must be named: the run-scoped numbers belong to one session.
+      assert.equal(typeof out.session, 'string')
+      assert.ok(out.session.length > 0, 'the session scope must not be empty')
     } finally {
       await ctx.fiber.dispose()
     }

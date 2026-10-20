@@ -13,6 +13,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { PolicyRegistry } from '../../src/state/registry.ts'
+import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 async function setup(): Promise<Context> {
   const ctx = new Context()
@@ -159,14 +160,14 @@ describe('GAP 1 — spec 6 effort-escalation on search/multihop signals', () => 
   it('escalates the effort tier when the pre-step message carries an escalation signal', async () => {
     const ctx = await setup()
     try {
-      const before = ctx.fable51.effortTier
+      const before = ctx.fable51.episode(DEFAULT_SESSION).effortTier
       await (ctx as unknown as { waterfall(t: unknown, n: string, p: unknown, next: () => Promise<unknown>): Promise<unknown> })
         .waterfall(ctx, 'agent/pre-step', {
           messages: [{ role: 'user', content: 'this task needs a multihop search across sources' }],
           turn: 1,
           step: 1,
         }, async () => ({ kind: 'enter' }))
-      assert.notEqual(ctx.fable51.effortTier, before, 'an escalation signal must raise the tier')
+      assert.notEqual(ctx.fable51.episode(DEFAULT_SESSION).effortTier, before, 'an escalation signal must raise the tier')
       assert.ok(ctx.fable51.worklog.some((w) => w.check === 'effort escalation'), 'the escalation must be observable')
     } finally {
       await ctx.fiber.dispose()
@@ -182,8 +183,8 @@ describe('GAP 2 — spec 15 pass labeling: parallel, sequential, interleaved are
       await call(ctx, 'reasoning-lineage', { passId: 'other' })
       const res = await call(ctx, 'reasoning-dag', { passId: 'join', deps: ['root', 'other'] })
       assert.equal(res.isError, false, 'multi-dep recording is the service surface under test')
-      assert.equal(ctx.fable51.passLabels.get('root'), 'sequential')
-      assert.equal(ctx.fable51.passLabels.get('join'), 'parallel')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).passLabels.get('root'), 'sequential')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).passLabels.get('join'), 'parallel')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -198,7 +199,7 @@ describe('GAP 2 — spec 15 pass labeling: parallel, sequential, interleaved are
       const stream = await (ctx as unknown as { waterfall(t: unknown, n: string, o: unknown, next: () => AsyncIterable<unknown>): AsyncIterable<unknown> })
         .waterfall(ctx, 'llm/stream', { model: 'fix-test' }, source)
       for await (const chunk of stream) void chunk
-      assert.equal(ctx.fable51.passLabels.get('llm:fix-test'), 'interleaved')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).passLabels.get('llm:fix-test'), 'interleaved')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -219,13 +220,13 @@ describe('GAP 3 — spec 58 convergence: small deltas for N turns AND no new evi
         for await (const chunk of stream) void chunk
       }
       await drive()
-      assert.equal(ctx.fable51.converged().converged, false, 'one stable turn is not convergence')
+      assert.equal(ctx.fable51.converged(DEFAULT_SESSION).converged, false, 'one stable turn is not convergence')
       await drive()
       await drive()
-      const stable = ctx.fable51.converged()
+      const stable = ctx.fable51.converged(DEFAULT_SESSION)
       assert.equal(stable.converged, true, 'N stable turns with no new evidence converge')
       ctx.emit('tools/result', { name: 'fable51_context-management', arguments: {} } as never, { content: [{ type: 'text', text: 'fresh artifact' }], isError: false } as never)
-      assert.equal(ctx.fable51.converged().converged, false, 'new evidence blocks convergence')
+      assert.equal(ctx.fable51.converged(DEFAULT_SESSION).converged, false, 'new evidence blocks convergence')
     } finally {
       await ctx.fiber.dispose()
     }

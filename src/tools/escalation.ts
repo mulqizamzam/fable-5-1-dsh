@@ -82,10 +82,12 @@ export function escalationTools(): ToolSpec[] {
           count: { type: 'number' },
         },
       },
-      execute(_args, { service }) {
+      execute(_args, { service, sessionKey }) {
         // The service counter is the source of truth: the argument is
         // advisory only, so a caller cannot under- or over-report the budget.
-        const { count, escalate } = service.replan()
+        // The counter is this session's: another run's replans must not count
+        // against this one.
+        const { count, escalate } = service.replan(sessionKey)
         const max = service.config.budget.maxReplans
         return {
           allowed: count <= max,
@@ -158,12 +160,12 @@ export function escalationTools(): ToolSpec[] {
           ladder: { type: 'array', items: { type: 'string', enum: ['retry', 'replan', 'downgrade', 'ask'] } },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, sessionKey }) {
         const { failed } = args as { failed: boolean }
         // A truthy non-boolean would be read as a success: the ladder would not
         // advance on a failure that happened.
         if (typeof failed !== 'boolean') throw new Error('failed must be a boolean')
-        const rung = failed ? service.nextRung() : rungAt(service.rung)
+        const rung = failed ? service.nextRung(sessionKey) : rungAt(service.episode(sessionKey).rung)
         return { rung, ladder: [...LADDER] }
       },
     },

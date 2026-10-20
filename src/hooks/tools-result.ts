@@ -7,6 +7,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Fable51Policy } from '../policy-service.ts'
+import { sessionKeyFromExec } from '../state/session-key.ts'
 
 interface ResultLike {
   content?: Array<{ type: string; text?: string }>
@@ -32,7 +33,8 @@ export function wireToolsResult(ctx: Context): void {
       at: Date.now(),
     })
     // spec 58: a verified tool result is new evidence — it blocks convergence.
-    if (verified) svc.markEvidence()
+    // The evidence belongs to the session that produced it.
+    if (verified) svc.markEvidence(sessionKeyFromExec(exec))
     // spec 95: coarse cost accounting per tool call.
     svc.recordCost({
       stage: `tool:${exec.name ?? 'unknown'}`,

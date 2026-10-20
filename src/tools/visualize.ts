@@ -73,8 +73,9 @@ export function visualizeTools(): ToolSpec[] {
       },
       outputSchema: {
         type: 'object',
-        required: ['policies', 'lineage', 'costs', 'cache', 'snapshots', 'config'],
+        required: ['session', 'policies', 'lineage', 'costs', 'cache', 'snapshots', 'config'],
         properties: {
+          session: { type: 'string', description: 'the session the run-scoped numbers below belong to' },
           policies: {
             type: 'array',
             items: {
@@ -163,7 +164,7 @@ export function visualizeTools(): ToolSpec[] {
           gateLog: { type: 'array' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, sessionKey }) {
         const record = asRecord(args)
         const format = (record.format as string) ?? 'ascii'
         const includeWorklog = record.includeWorklog === true
@@ -224,7 +225,7 @@ export function visualizeTools(): ToolSpec[] {
         }))
 
         const stageBudgets: Record<string, number> = {}
-        for (const [stage, budget] of service.stageTokens) {
+        for (const [stage, budget] of service.episode(sessionKey).stageTokens) {
           stageBudgets[stage] = budget
         }
 
@@ -240,13 +241,16 @@ export function visualizeTools(): ToolSpec[] {
 
         // Config summary
         const config = {
-          effortTier: service.effortTier,
+          effortTier: service.episode(sessionKey).effortTier,
           maxForkDepth: service.config.budget.maxForkDepth,
           maxConcurrentPasses: service.config.reasoning.maxConcurrentPasses,
           stageTokenBudget: service.config.budget.stageTokenBudget,
         }
 
         const output = {
+          // The run-scoped numbers below belong to this session; the shared
+          // audit trail belongs to the host. Say which is which.
+          session: sessionKey,
           policies,
           lineage: {
             totalPasses: allPasses.length,
@@ -283,6 +287,9 @@ export function visualizeTools(): ToolSpec[] {
         // ASCII format
         const lines: string[] = []
         lines.push('=== fable51 Policy Visualizer ===')
+        lines.push('')
+        lines.push(`Run scope: session "${sessionKey}" (budgets, effort tier, fork window)`)
+        lines.push('Shared scope: host (policies, ledger, cache, snapshots, lineage)')
         lines.push('')
 
         lines.push('--- Policies ---')

@@ -15,6 +15,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { escalationTools } from '../../src/tools/escalation.ts'
+import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 interface Envelope {
   readonly spec: string
@@ -141,13 +142,13 @@ describe('spec 14 — replan-budget', () => {
       assert.equal(third.output.allowed, false)
       assert.equal(third.output.escalate, true)
       assert.equal(third.output.count, 3)
-      assert.equal(ctx.fable51.replans, 3, 'each call must advance the service replan counter')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).replans, 3, 'each call must advance the service replan counter')
 
       const replay = await call(ctx, 'replan-budget', { replanCount: 3 })
       // Effectful: the old unconditional cache froze the budget at the first answer, so replans were never charged.
       assert.equal(replay.rerun, false)
       assert.equal(replay.output.count, 4)
-      assert.equal(ctx.fable51.replans, 4, 'every call must advance the service replan counter')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).replans, 4, 'every call must advance the service replan counter')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -197,17 +198,17 @@ describe('spec 28 — escalation-ladder', () => {
       assert.equal(failed.output.rung, 'retry')
       assert.deepEqual(failed.output.ladder, ['retry', 'replan', 'downgrade', 'ask'])
       assert.equal(failed.rerun, false)
-      assert.equal(ctx.fable51.rung, 1)
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).rung, 1)
 
       const replay = await call(ctx, 'escalation-ladder', { failed: true })
       // Effectful: the old unconditional cache replayed rung 1 forever, so a repeat failure never escalated.
       assert.equal(replay.rerun, false)
       assert.equal(replay.output.rung, 'replan')
-      assert.equal(ctx.fable51.rung, 2, 'identical args must advance the ladder again, not replay it')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).rung, 2, 'identical args must advance the ladder again, not replay it')
 
       const ok = await call(ctx, 'escalation-ladder', { failed: false })
       assert.equal(ok.output.rung, 'downgrade', 'a success reads the current rung without advancing')
-      assert.equal(ctx.fable51.rung, 2)
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).rung, 2)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -218,7 +219,7 @@ describe('spec 28 — escalation-ladder', () => {
     try {
       const spec = escalationTools().find((tool) => tool.name === 'escalation-ladder')
       assert.ok(spec, 'escalation-ladder spec must exist')
-      const env = { service: ctx.fable51 }
+      const env = { service: ctx.fable51, sessionKey: DEFAULT_SESSION }
       const walked: string[] = []
       for (let i = 0; i < 4; i += 1) {
         const out = (await spec.execute({ failed: true }, env)) as { rung: string }

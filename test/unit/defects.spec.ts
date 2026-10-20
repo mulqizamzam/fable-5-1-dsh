@@ -14,6 +14,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { resolveConfig } from '../../src/config/defaults.ts'
+import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 interface Envelope {
   readonly ok: boolean
@@ -193,13 +194,13 @@ describe('defect: state grew for the lifetime of the host', () => {
   it('DEFECT-13 the stage token budget is a per-turn budget, not a lifetime one', async () => {
     const ctx = await setup()
     try {
-      ctx.fable51.addStageTokens('llm:proof', 500_000)
-      assert.equal(ctx.fable51.stageTokens.get('llm:proof'), 500_000)
+      ctx.fable51.addStageTokens(DEFAULT_SESSION, 'llm:proof', 500_000)
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).stageTokens.get('llm:proof'), 500_000)
       // 'session/event' is declared with a scoped `this`, so its published arity counts a
       // receiver cordis never passes at runtime; reach it through cordis like the waterfall helper.
       const internals = ctx as unknown as { emit(n: string, s: unknown, e: unknown): void }
       internals.emit('session/event', {} as never, { type: 'turn/start' } as never)
-      assert.equal(ctx.fable51.stageTokens.get('llm:proof'), undefined, 'a new turn must not inherit the previous turn’s exhausted budget')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).stageTokens.get('llm:proof'), undefined, 'a new turn must not inherit the previous turn’s exhausted budget')
     } finally {
       await ctx.fiber.dispose()
     }

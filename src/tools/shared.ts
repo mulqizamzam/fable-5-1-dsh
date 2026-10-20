@@ -10,10 +10,19 @@ import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { Fable51Policy } from '../policy-service.ts'
 import { fingerprint } from '../state/cache.ts'
+import { sessionKeyFromExec } from '../state/session-key.ts'
 import type { Gate } from '../types/gate.ts'
 
 export interface ToolEnv {
   readonly service: Fable51Policy
+  /**
+   * The session this call belongs to.
+   *
+   * Resolved per call from the execution the host handed us, so a tool that
+   * spends a budget and the hook that resets it land on the same run's
+   * episode. DEFAULT_SESSION when the host named no session.
+   */
+  readonly sessionKey: string
 }
 
 /** Uniform tool result: never void, always typed (PRD §3.3, spec 13). */
@@ -92,12 +101,15 @@ export function defineTool<T>(spec: ToolSpec<T>, env: ToolEnv): ToolDefinition {
         return [{ type: 'text', text: renderText(value) }]
       },
     },
-    async execute(args: unknown, _exec: ToolRunContext): Promise<unknown> {
+    async execute(args: unknown, exec: ToolRunContext): Promise<unknown> {
       let output: unknown
       let rerun = false
+      // The session key is per call: the env is shared by every tool, but the
+      // session belongs to the execution, not to the registration.
+      const callEnv: ToolEnv = { service: env.service, sessionKey: sessionKeyFromExec(exec) }
       try {
         if (spec.effectful === true) {
-          output = await spec.execute(args, env)
+          output = await spec.execute(args, callEnv)
         } else {
           // spec 19/43: idempotency — same input hash + same spec + same config
           // fingerprint replays the cached output instead of re-running.
@@ -107,7 +119,7 @@ export function defineTool<T>(spec: ToolSpec<T>, env: ToolEnv): ToolDefinition {
             rerun = true
             output = hit.output
           } else {
-            output = await spec.execute(args, env)
+            output = await spec.execute(args, callEnv)
             env.service.cache.set(key, output)
           }
         }

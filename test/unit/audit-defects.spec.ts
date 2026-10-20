@@ -21,6 +21,7 @@ import { SnapshotStore } from '../../src/state/snapshots.ts'
 import { PolicyRegistry } from '../../src/state/registry.ts'
 import { canonicalize, fingerprint } from '../../src/state/cache.ts'
 import type { ReasoningPass } from '../../src/types/pass.ts'
+import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 interface Envelope {
   readonly ok: boolean
@@ -47,6 +48,24 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>): 
     callId: ToolCallId(`audit-${name}`),
     name: `fable51_${name}`,
     arguments: args,
+  })
+  assert.equal(result.isError, false, `tool fable51_${name} threw: ${JSON.stringify(result.value)}`)
+  return result.value as unknown as Envelope
+}
+
+/**
+ * Call a tool the way the agent loop does: the execution carries the agent,
+ * and the agent carries the session. The bundle resolves the run a call
+ * belongs to from that identity, so an unattributed call cannot be told
+ * apart from a different session's call.
+ */
+async function callAs(ctx: Context, sessionId: string, name: string, args: Record<string, unknown>): Promise<Envelope> {
+  const result = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: ToolCallId(`audit-${name}`),
+    name: `fable51_${name}`,
+    arguments: args,
+    agent: { session: { id: sessionId } } as never,
   })
   assert.equal(result.isError, false, `tool fable51_${name} threw: ${JSON.stringify(result.value)}`)
   return result.value as unknown as Envelope
@@ -150,9 +169,9 @@ describe('audit — hooks (spec 6)', () => {
           waterfall(t: unknown, n: string, p: unknown, next: () => Promise<unknown>): Promise<unknown>
         }).waterfall(ctx, 'agent/pre-step', { messages, turn: 1, step: 1 }, async () => ({ kind: 'enter' }))
       await preStep([{ content: 'please research this topic' }])
-      const once = ctx.fable51.effortTier
+      const once = ctx.fable51.episode(DEFAULT_SESSION).effortTier
       await preStep([{ content: 'please research this topic' }, { content: 'still working' }])
-      assert.equal(ctx.fable51.effortTier, once, 'one search signal escalates one rung, not one per step')
+      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).effortTier, once, 'one search signal escalates one rung, not one per step')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -183,11 +202,11 @@ describe('audit — policy service (specs 95, 28)', () => {
     try {
       ctx.emit('session/created', { id: 'A' } as never)
       for (let i = 0; i < 4; i += 1) {
-        const step = await call(ctx, 'escalation-ladder', { failed: true })
+        const step = await callAs(ctx, 'A', 'escalation-ladder', { failed: true })
         assert.ok((step.output as { rung: string }).rung.length > 0)
       }
       ctx.emit('session/created', { id: 'B' } as never)
-      const fresh = await call(ctx, 'escalation-ladder', { failed: true })
+      const fresh = await callAs(ctx, 'B', 'escalation-ladder', { failed: true })
       assert.equal((fresh.output as { rung: string }).rung, 'retry', 'session B must not inherit session A rung')
     } finally {
       await ctx.fiber.dispose()

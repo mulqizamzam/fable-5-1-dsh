@@ -186,14 +186,15 @@ export function reasoningCoreTools(): ToolSpec[] {
           decision: { type: 'string', enum: ['fork', 'merge', 'keep', 'discard'] },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, sessionKey }) {
         const record = asRecord(args)
         const candidateCount = requireCount(record, 'candidateCount')
         const budgetLeft = requireCount(record, 'budgetLeft')
         // The stage fork budget is consumed here (spec 96): the caller's
-        // budgetLeft is advisory; the service counter is the hard cap.
+        // budgetLeft is advisory; the service counter is the hard cap, and
+        // that counter belongs to this session alone.
         const decision: ForkDecision = candidateCount > 1
-          ? budgetLeft > 0 && service.recordFork() ? 'fork' : 'merge'
+          ? budgetLeft > 0 && service.recordFork(sessionKey) ? 'fork' : 'merge'
           : candidateCount === 1 ? 'keep' : 'discard'
         return { decision }
       },
@@ -537,7 +538,7 @@ export function reasoningCoreTools(): ToolSpec[] {
           strategy: { type: 'string', enum: ['union', 'intersection', 'weighted'] },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, sessionKey }) {
         const record = asRecord(args)
         const strategy = requireMergeStrategy(record)
         const sets = requireStringSets(record.sets, 'sets')
@@ -547,7 +548,7 @@ export function reasoningCoreTools(): ToolSpec[] {
           : ordered
         // spec 96: every merge consumes one slot of the per-stage merge budget,
         // so past the cap the merge is refused instead of silently proceeding.
-        if (!service.recordMerge()) {
+        if (!service.recordMerge(sessionKey)) {
           throw new Error(`per-stage merge budget spent (maxMergesPerStage=${service.config.budget.maxMergesPerStage})`)
         }
         return { merged, strategy }

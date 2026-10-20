@@ -409,7 +409,7 @@ export function reasoningFlowTools(): ToolSpec[] {
         properties: { passId: { type: 'string' }, parentId: { oneOf: [{ type: 'string' }, { type: 'null' }] } },
       },
       outputSchema: { type: 'object', required: ['recorded', 'ancestors'], properties: { recorded: { type: 'boolean' }, ancestors: stringArray } },
-      execute(args, { service }) {
+      execute(args, { service, sessionKey }) {
         const record = asRecord(args)
         const passId = requireString(record, 'passId')
         const parentId = record.parentId === undefined || record.parentId === null ? null : requireString(record, 'parentId')
@@ -430,7 +430,7 @@ export function reasoningFlowTools(): ToolSpec[] {
         })
         // Spec 15: a lineage pass is a chain link (sequential); parallel
         // structure is labeled where branches join (dag tool, spec 34).
-        service.labelPass(passId, 'sequential')
+        service.labelPass(sessionKey, passId, 'sequential')
         return { recorded: true, ancestors: service.lineage.ancestors(passId) }
       },
     },
