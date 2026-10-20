@@ -116,6 +116,65 @@ describe('fable51 budget-advisor tools', () => {
     }
   })
 
+  it('derives the recommendation from a populated cost ledger', async () => {
+    const ctx = await setup()
+    try {
+      // The default answer for an empty ledger, so the test can prove the
+      // populated answer came from the data and not from the fallback.
+      const empty = await runAdvisor(ctx, { taskClass: 'open' })
+      const defaultBudget = empty.recommended.stageTokenBudget
+
+      // Ten bookings on one stage: p90 is 200000, and 'open' scales by 5.
+      for (let i = 0; i < 10; i += 1) {
+        ctx.fable51.recordCost({
+          stage: 'tool:fable51_chain-vs-tree',
+          tokens: 200_000,
+          latencyMs: 1200,
+          riskWeight: 0,
+          at: Date.now(),
+        })
+      }
+
+      // minSamplesPerStage 2 drops the advisor's own single booking, so the
+      // stats describe the stage under test and nothing else.
+      const out = await runAdvisor(ctx, { taskClass: 'open', minSamplesPerStage: 2 })
+
+      assert.equal(out.taskClass, 'open')
+      assert.ok(out.sampleSize >= 10, `the ledger size must be reported, got ${out.sampleSize}`)
+      assert.equal(out.stageStats.length, 1, 'one stage produced bookings')
+      assert.equal(out.stageStats[0]?.stage, 'tool:fable51_chain-vs-tree')
+      assert.equal(out.stageStats[0]?.count, 10)
+      assert.equal(out.stageStats[0]?.p90Tokens, 200_000, 'p90 must come from the bookings')
+      assert.equal(out.stageStats[0]?.p50Tokens, 200_000)
+
+      // 200000 * 5.0 = 1000000, far above the empty-ledger fallback.
+      assert.equal(out.recommended.stageTokenBudget, 1_000_000)
+      assert.ok(
+        out.recommended.stageTokenBudget !== defaultBudget,
+        'the populated answer must differ from the empty-ledger default',
+      )
+      // 'open' needs 30 samples for high confidence; ten earn medium.
+      assert.equal(out.confidence, 'medium')
+      assert.ok(out.rationale.includes('tool:fable51_chain-vs-tree'), `rationale must name the stage: ${out.rationale}`)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('excludes a stage below the minimum sample count', async () => {
+    const ctx = await setup()
+    try {
+      ctx.fable51.recordCost({ stage: 'tool:rare', tokens: 1000, latencyMs: 10, riskWeight: 0, at: Date.now() })
+      const out = await runAdvisor(ctx, { taskClass: 'search', minSamplesPerStage: 2 })
+
+      assert.equal(out.sampleSize, 1)
+      assert.equal(out.stageStats.length, 0, 'a stage with one sample must not be reported')
+      assert.equal(out.confidence, 'low')
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('returns different defaults for each task class', async () => {
     // Use separate contexts to avoid cache interference between different taskClass calls
     const contexts = await Promise.all([
