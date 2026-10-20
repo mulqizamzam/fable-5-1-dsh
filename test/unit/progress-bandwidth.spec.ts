@@ -10,7 +10,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { TOOL_RUNTIME_SCHEDULER, type ToolExecutionToken } from '@deepseek-ai/dsh-tools'
 import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -210,6 +210,64 @@ describe('spec 55, reasoning bandwidth', () => {
     }
   })
 
+  it('does not deadlock a parallel group that outruns the cap', async () => {
+    const ctx = await setup({ reasoning: { maxConcurrentPasses: 2 } })
+    try {
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      registerBlockingTool(ctx, gate)
+
+      // The agent loop drives a parallel group like this: it awaits each
+      // call's prepare before starting the next, dispatches without
+      // awaiting, and finalizes the results later in model order. The
+      // scheduler is the host's own surface, used here because the bug it
+      // guards is invisible through ctx.tools.execute.
+      const scheduler = ctx.tools[TOOL_RUNTIME_SCHEDULER]
+      const prepareAll = (async () => {
+        const prepared = []
+        for (let i = 0; i < 3; i += 1) {
+          prepared.push(await scheduler.prepare({
+            signal: new AbortController().signal,
+            callId: ToolCallId(`g${i}`),
+            name: 'fable51_test-block',
+            arguments: {},
+          }))
+        }
+        return prepared
+      })()
+      // A prepare that waits for a slot would hang the host, so the wait
+      // becomes a failure with a name instead of a stalled test.
+      const prepared = await Promise.race([
+        prepareAll,
+        new Promise<never>((_, reject) => setTimeout(
+          () => reject(new Error('prepare blocked: a slot is being held across the pre-execute gate')),
+          3000,
+        )),
+      ])
+
+      const dispatches = prepared.map((entry) => scheduler.dispatch(entry.exec))
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      const bandwidth = ctx.fable51.bandwidth(DEFAULT_SESSION)
+      assert.equal(bandwidth.inFlight, 2, 'the cap must bound the running bodies')
+      assert.equal(bandwidth.queued, 1, 'the third body must wait for a slot')
+
+      release()
+      const outcomes = await Promise.all(dispatches)
+      for (const [index, entry] of prepared.entries()) {
+        const outcome = outcomes[index]!
+        if (outcome.kind === 'post-result') await scheduler.finalize(entry.exec, outcome.result)
+        else scheduler.finish(entry.exec, outcome.result)
+      }
+      assert.equal(
+        ctx.fable51.bandwidth(DEFAULT_SESSION).inFlight,
+        0,
+        'every slot must be given back after the group finishes',
+      )
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('frees the slot when a call finishes', async () => {
     const ctx = await setup({ reasoning: { maxConcurrentPasses: 1 } })
     try {
@@ -231,13 +289,19 @@ describe('spec 55, reasoning bandwidth', () => {
     const ctx = await setup({ reasoning: { maxConcurrentPasses: 1 } })
     try {
       // A nested call is part of a pass already running: it takes no slot.
-      const decision = await (ctx as unknown as Waterfall).waterfall(
-        ctx,
-        'tools/pre-execute',
-        { callId: ToolCallId('n1'), name: 'fable51_chain-vs-tree', arguments: {}, parent: 'outer-token' },
-        async () => ({ kind: 'allow' }),
-      )
-      assert.deepEqual(decision, { kind: 'allow' }, 'a nested call must be admitted')
+      const scheduler = ctx.tools[TOOL_RUNTIME_SCHEDULER]
+      const prepared = await scheduler.prepare({
+        signal: new AbortController().signal,
+        callId: ToolCallId('n1'),
+        name: 'fable51_chain-vs-tree',
+        arguments: { branchFactor: 2 },
+        // The parent token is opaque; any symbol marks the call as nested.
+        parent: Symbol('outer') as ToolExecutionToken,
+      })
+      if (prepared.kind !== 'dispatch') throw new Error('the call must be dispatchable')
+      const outcome = await scheduler.dispatch(prepared.exec)
+      if (outcome.kind === 'post-result') await scheduler.finalize(prepared.exec, outcome.result)
+      else scheduler.finish(prepared.exec, outcome.result)
       assert.equal(ctx.fable51.bandwidth(DEFAULT_SESSION).inFlight, 0, 'a nested call must not take a slot')
       assert.equal(ctx.fable51.bandwidth(DEFAULT_SESSION).queued, 0, 'a nested call must never queue')
     } finally {

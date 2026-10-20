@@ -15,7 +15,7 @@ import type { Fable51Config } from './config/schema.ts'
 import { wireAgentPreStep } from './hooks/agent-pre-step.ts'
 import { wireLlmStream } from './hooks/llm-stream.ts'
 import { wireSessionEvent } from './hooks/session-event.ts'
-import { wireToolsPreExecute } from './hooks/tools-pre-execute.ts'
+import { wireToolsExecute } from './hooks/tools-execute.ts'
 import { wireToolsResult } from './hooks/tools-result.ts'
 import { registerTools } from './tools/index.ts'
 import { PassLineage } from './state/lineage.ts'
@@ -179,7 +179,7 @@ export class Fable51Policy extends Service {
     // PRD §3: hooks and tools wire at service construction; cordis disposes
     // listeners and tool registrations with the owning fiber automatically.
     wireAgentPreStep(ctx)
-    wireToolsPreExecute(ctx)
+    wireToolsExecute(ctx)
     wireToolsResult(ctx)
     wireLlmStream(ctx)
     wireSessionEvent(ctx)
@@ -301,29 +301,6 @@ export class Fable51Policy extends Service {
       peak: episode.peakInFlight,
       saturated: episode.inFlight >= cap,
     }
-  }
-
-  /**
-   * Executions currently holding a parallel-pass slot (spec 55).
-   *
-   * A call can be denied after the slot was taken, another gate may refuse
-   * it, or the caller may abort, so the holder is tracked per execution and
-   * released exactly once, by whoever reports the result.
-   */
-  private readonly slotHolders = new WeakMap<object, string>()
-
-  /** Remember that this execution holds a slot, and which run's. */
-  holdSlot(exec: object, key: string): void {
-    this.slotHolders.set(exec, key)
-  }
-
-  /** Release the slot this execution holds, if any; returns the run's key. */
-  releaseHeldSlot(exec: object): string | undefined {
-    const key = this.slotHolders.get(exec)
-    if (key === undefined) return undefined
-    this.slotHolders.delete(exec)
-    this.releaseSlot(key)
-    return key
   }
 
   // ---- spec 1: context thresholds ----
