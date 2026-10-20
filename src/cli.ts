@@ -37,8 +37,10 @@ async function boot(): Promise<Context> {
   return ctx
 }
 
-/** Read `--flag value` from argv; returns undefined when the flag is absent. */
+/** Read `--flag value` or `--flag=value` from argv; returns undefined when the flag is absent. */
 function flagValue(args: string[], flag: string): string | undefined {
+  const inline = args.find((arg) => arg.startsWith(`${flag}=`))
+  if (inline !== undefined) return inline.slice(flag.length + 1)
   const index = args.indexOf(flag)
   return index === -1 ? undefined : args[index + 1]
 }
@@ -47,8 +49,25 @@ function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag)
 }
 
+/** Read `--format`; only the two documented formats are accepted. */
+function formatValue(args: string[]): { ok: true; format: 'json' | 'ascii' } | { ok: false; error: string } {
+  const raw = flagValue(args, '--format')
+  if (raw === undefined) {
+    return args.includes('--format')
+      ? { ok: false, error: '--format requires a value: json or ascii' }
+      : { ok: true, format: 'ascii' }
+  }
+  if (raw === 'json' || raw === 'ascii') return { ok: true, format: raw }
+  return { ok: false, error: `--format must be json or ascii, got '${raw}'` }
+}
+
 async function runInspect(args: string[]): Promise<number> {
-  const format = flagValue(args, '--format') ?? 'ascii'
+  const parsed = formatValue(args)
+  if (!parsed.ok) {
+    console.error(parsed.error)
+    return 1
+  }
+  const format = parsed.format
   const includeWorklog = hasFlag(args, '--include-worklog')
   const includeGateLog = hasFlag(args, '--include-gate-log')
 
@@ -93,7 +112,12 @@ async function runAdviseBudget(args: string[]): Promise<number> {
 
   const historyWindowRaw = flagValue(args, '--history-window')
   const minSamplesRaw = flagValue(args, '--min-samples')
-  const format = flagValue(args, '--format') ?? 'ascii'
+  const parsed = formatValue(args)
+  if (!parsed.ok) {
+    console.error(parsed.error)
+    return 1
+  }
+  const format = parsed.format
   const historyWindow = historyWindowRaw === undefined ? 5000 : Number.parseInt(historyWindowRaw, 10)
   const minSamples = minSamplesRaw === undefined ? 2 : Number.parseInt(minSamplesRaw, 10)
   if (!Number.isSafeInteger(historyWindow) || historyWindow < 1) {

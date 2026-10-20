@@ -107,4 +107,33 @@ describe('fable51 CLI', () => {
     assert.equal(code, 1)
     assert.ok(err.includes('--min-samples'), `expected the flag error, got: ${err}`)
   })
+
+  it('rejects an unknown --format value for inspect', async () => {
+    const { code, err } = await capture(['inspect', '--format', 'asdf'])
+    assert.equal(code, 1)
+    assert.ok(err.includes('--format'), `expected the flag error, got: ${err}`)
+  })
+
+  it('rejects an unknown --format value for advise-budget', async () => {
+    const { code, err } = await capture(['advise-budget', 'search', '--format', 'yaml'])
+    assert.equal(code, 1)
+    assert.ok(err.includes('--format'), `expected the flag error, got: ${err}`)
+  })
+
+  it('accepts the --format=value form', async () => {
+    const { code, out } = await capture(['inspect', '--format=json'])
+    assert.equal(code, 0)
+    assert.ok(out.trimStart().startsWith('{'), `expected the JSON envelope, got: ${out.slice(0, 80)}`)
+  })
+
+  it('rejects --format with no value', async () => {
+    const { code, err } = await capture(['inspect', '--format'])
+    assert.equal(code, 1)
+    assert.ok(err.includes('--format'), `expected the flag error, got: ${err}`)
+  })
+
+  it('accepts the equals form for --history-window', async () => {
+    const { code, err } = await capture(['advise-budget', 'search', '--history-window=50'])
+    assert.equal(code, 0, err)
+  })
 })
