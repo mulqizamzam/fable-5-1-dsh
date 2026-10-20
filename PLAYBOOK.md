@@ -10,7 +10,7 @@ Status di host ini (diverifikasi 2026-10-14):
 | Profile aktif | `$DSH_HOME/profiles/web` — ada di `dependencies` (`link:`) **dan** `dsh.profile.bundles` |
 | Profile uji | `$DSH_HOME/profiles/fable-test` — `dsh-base` + `dsh-headless` + `dsh-ui-director` + bundle ini |
 | Entry id | `fable-5-1` |
-| Tool | 92 tool `fable51_*` (dari 100 spec; spec 4 `progress-reporting` dan spec 55 `reasoning-bandwidth` tidak diimplementasikan, 6 spec lain hidup sebagai method service yang dipicu hook) |
+| Tool | 92 tool `fable51_*` (dari 100 spec; 91 spec punya tool, 9 spec hidup sebagai method service yang dipicu hook — 4, 6, 10, 15, 18, 43, 55, 58, 96; nol spec tanpa implementasi) |
 | HEAD | `32fb562` — *fix: stop the cache from freezing state, stop the envelope certifying blind* |
 
 ---
@@ -138,12 +138,13 @@ tool yang hilang, dobel, atau karangan).
 
 Paling sering disalahpahami — baca sebelum menjadikannya kontrol.
 
-### Benar-benar menahan (3)
+### Benar-benar menahan (4)
 
 | Spec | Mekanisme |
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat ke worklog dengan `verdict:'discarded'`; kalau `escapeAction:'abort'` tool melempar ([src/tools/ops.ts:231](src/tools/ops.ts#L231)), jadi `ok:false` — bukan hasil yang kelihatan pakai. **Allow-list kosong = read boleh, write ditolak.** Allow-list yang dideklarasikan = pencocokan persis, fail-closed. |
 | `human-in-the-loop` (27) | Fail-closed: `irreversible`/`external`/`estimatedCost` yang kosong tetap minta persetujuan. **Tetap hanya jalan kalau model memanggilnya** — tidak ada interception otomatis. |
+| Bandwidth (55) | Waterfall `tools/pre-execute` memegang satu slot pass paralel. Di atas `maxConcurrentPasses`, sisanya **antre** — call menunggu slot, bukan ditolak. Call nested (punya `parent`) tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
 | Isolasi fault hook | Error di `agent/pre-step` atau `llm/stream` dicatat lalu step/stream lanjut. Plugin tidak bisa lagi membatalkan turn. |
 
 ### Hanya mengklasifikasi & melapor
@@ -152,7 +153,8 @@ Paling sering disalahpahami — baca sebelum menjadikannya kontrol.
 |---|---|
 | `context-management` (1) | Aksi compact/drop/spill diklasifikasi dan di-log. **Tidak ada message list yang terpotong atau di-spill.** |
 | Eskalasi effort (6) | `effortTier` naik dan di-log. **Parameter model tidak berubah.** |
-| `reasoning-backpressure` (71) | Dilaporkan dari queue depth yang kamu kasih; tidak diukur sendiri. |
+| `reasoning-backpressure` (71) | Dilaporkan dari queue depth yang kamu kasih; tidak diukur sendiri. Spec 55 yang mengukur antrean sungguhan. |
+| Progress reporting (4) | Jejak progres run tercatat dan ditampilkan. **Menarasi transisi stage dan kegagalan gate — baris per-step sengaja tidak ada.** |
 | `idempotency` (19) | Cache berlaku pada tool murni; tool `effectful` selalu re-execute. |
 
 **Kesimpulan:** jangan pakai paket ini sebagai sandbox atau approval mechanism.
@@ -296,6 +298,13 @@ setelah perbaikan `test/unit/session-isolation.spec.ts` mengunci lima
 perilaku: reset satu session tidak menyentuh session lain, tiap session punya
 budget dan jatah fork sendiri, dan bucket tanpa atribusi session bukan
 wildcard.
+
+**Diverifikasi saat mengisi spec 4 dan 55:** `test/unit/progress-bandwidth.spec.ts`
+mengunci sepuluh perilaku — tiga step dalam satu turn menghasilkan satu baris
+progress, turn baru menghasilkan baris baru, gate gagal dinarasi sekali dan
+hanya di session-nya, gate lolos tidak masuk jejak, call paralel di atas
+`maxConcurrentPasses` **antre** (bukan ditolak) dan semuanya tetap jalan,
+slot dilepas saat call selesai, dan call nested tidak pernah menunggu slot.
 
 **Belum diverifikasi:** perilaku setelah restart host belum diuji — klaim di §0
 masih menunggu konfirmasi restart; `fable51 advise-budget` belum diuji dengan

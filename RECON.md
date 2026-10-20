@@ -19,6 +19,7 @@ pinned checkout, not from memory.
 | PRD claim (v0.1.1) | Reality at pin | Evidence |
 |---|---|---|
 | `agent/pre-step` | exists. Waterfall; payload `{ agent, messages, turn, step, signal }`; listener returns `PreStepDecision`, may reject/steer, must call `next()` | `packages/core/agent-loop/src/agent.ts:277`; `packages/core/agent/src/runtime-types.ts:320`; events declared `runtime-types.ts:246` (`interface Events`) |
+| `tools/pre-execute` | exists. Waterfall `(exec, next)` before dispatch; `next()` delegates to allow, decision is allow/deny/cancel/ask; an async listener must observe `exec.signal` | `packages/core/tools/src/index.ts:153` (`interface Events`); `PreToolDecision` at `src/index.ts:607`; `exec.parent` at `src/index.ts:349`; `exec.signal` at `src/index.ts:351` |
 | `tools/result` | exists. Emit-mode `(exec, result)`; observers cannot rewrite the result | `packages/core/tools/src/index.ts:198` |
 | `llm/stream` | exists. Waterfall `(options, next)` over token stream | `packages/llm/llm/src/index.ts:75` |
 | `session/event` | exists. Emit-mode `(session, event)`; `event.type` is a durable type | `packages/core/session/src/index.ts:77` |
@@ -50,7 +51,7 @@ PreStepDecision/SessionEvent/etc. types come from host packages the PRD's §3.5 
 
 - Gate 1: bundle loads in a real Cordis app (from checkout) AND composes in a real dsh profile (`dsh --profile <p> --dump-config`) — activation observed, no PENDING.
 - Gate 2: config validation unit tests (bad config throws with field path).
-- Gate 3: all four hooks fire in a synthetic session driven through the real Cordis ctx.
+- Gate 3: all five hooks fire in a synthetic session driven through the real Cordis ctx.
 - Gates 4a–4o: per tool group — registration contract + invocation + idempotency rerun hash equality.
 - Gate 5: state survives simulated session boundary; replay hash equality.
 - Gate 6: e2e synthetic session exercise.

@@ -23,18 +23,18 @@ awal. Setiap angka di bawah punya perintah atau berkas sumber.
 ## 1. Ringkasan produk
 
 Satu bundle dsh yang membawa disiplin reasoning Fable 5.1 ke dalam agent loop.
-Bentuknya satu service (`ctx.fable51`), empat hook event, dan 90 tool
+Bentuknya satu service (`ctx.fable51`), lima hook event, dan 92 tool
 berprefiks `fable51_`.
 
 Dari 100 spec di `sumber100specs.md`:
 
 | Kelas | Jumlah | Bentuk |
 |---|---|---|
-| Punya tool sendiri | 90 | tool `fable51_<nama>` |
-| Hidup sebagai method service yang dipicu hook | 8 | spec 6, 10, 15, 18, 43, 58, 96, 100 |
-| Tidak diimplementasikan | 2 | spec 4 `progress-reporting`, spec 55 `reasoning-bandwidth` |
+| Punya tool sendiri | 91 | tool `fable51_<nama>` (92 tool; spec 11 dan 100 masing-masing punya tool kedua) |
+| Hidup sebagai method service yang dipicu hook | 9 | spec 4, 6, 10, 15, 18, 43, 55, 58, 96 |
+| Tidak diimplementasikan | 0 | — |
 
-Angka 90 berasal dari enumerasi `allToolSpecs()` di `src/tools/index.ts`.
+Angka 92 berasal dari enumerasi `allToolSpecs()` di `src/tools/index.ts`.
 Sebaran per kelompok:
 
 | Kelompok | Jumlah |
@@ -49,7 +49,9 @@ Sebaran per kelompok:
 | `reasoning-flow` | 16 |
 | `reasoning-ops` | 17 |
 | `governance` | 7 |
-| Total | 90 |
+| `visualize` | 1 |
+| `budget-advisor` | 1 |
+| Total | 92 |
 
 Nama tool memakai garis bawah, bukan titik. Alasannya ada di
 `src/tools/shared.ts`: provider yang kompatibel dengan OpenAI menolak nama tool
@@ -96,7 +98,7 @@ paling sering dipakai ada di `PLAYBOOK.md`.
   gate log, worklog, dan cost ledger.
 - Empat hook event: `agent/pre-step`, `tools/result`, `llm/stream`,
   `session/event` (ditambah `session/created` dan `session/disposed`).
-- 90 tool dengan envelope hasil seragam.
+- 92 tool dengan envelope hasil seragam.
 - Config sembilan blok dengan validasi fail-loud.
 - Suite unit, integration, dan e2e yang memuat bundle ke host Cordis nyata.
 
@@ -132,7 +134,7 @@ dsh host
 │   ├── tools/result        emit, mencatat bukti dan biaya
 │   ├── llm/stream          waterfall generator, penghitung token
 │   └── session/*           lifecycle + durable event
-└── tools fable51_*         90 tool, 10 kelompok
+└── tools fable51_*         92 tool, 12 kelompok
 ```
 
 Registrasi terjadi di konstruktor service (`src/policy-service.ts`), bukan di
@@ -159,7 +161,7 @@ baris log yang menyebut jumlah tool. Aktivasi tidak boleh diasumsikan dari
 
 ### FR-02 Permukaan tool lengkap
 
-90 tool harus terdaftar dengan nama `fable51_<nama>`, satu tool per spec yang
+92 tool harus terdaftar dengan nama `fable51_<nama>`, satu tool per spec yang
 dikelompokkan, dan tidak ada nama dobel.
 
 - Terima: `allToolSpecs()` mengembalikan 90 nama unik dengan prefiks benar.
@@ -207,17 +209,33 @@ kosong.
 
 ### FR-07 Hook `agent/pre-step`
 
-Hook harus mencatat satu baris observability per step, mengklasifikasi rasio
-context (ok, compact, drop, spill), dan menaikkan effort tier satu kali per
-task saat pesan memuat sinyal `search`, `multihop`, atau `ambiguity`. Hook
+Hook harus mencatat satu baris observability **per stage**, bukan per step,
+mengklasifikasi rasio context (ok, compact, drop, spill), dan menaikkan effort
+tier satu kali per task saat pesan memuat sinyal `search`, `multihop`, atau
+`ambiguity`. Stage bergeser saat run pindah turn; step di dalam turn yang sama
+bukan stage, dan menarasinya setiap step adalah spam yang harus dibunuh. Hook
 tidak boleh menolak step. Fault di dalam hook dicatat lalu step tetap
 diizinkan lewat `next()`.
 
-- Terima: event dispatch nyata di suite e2e; fault tidak menghentikan step.
+- Terima: tiga step dalam satu turn menghasilkan satu baris progress; turn baru
+  menghasilkan baris baru; gate gagal dinarasi sekali.
 - Status: terpenuhi. Klasifikasi context hanya mencatat; tidak memotong atau
   memindahkan message list.
 
-### FR-08 Hook `tools/result`
+### FR-08 Hook `tools/pre-execute`
+
+Hook harus memegang satu slot pass paralel per session sebelum call dispatch.
+Di atas `maxConcurrentPasses`, excess **antre**: call menunggu slot, bukan
+ditolak. Call nested (yang punya `parent`) tidak mengambil slot dan tidak
+pernah menunggu — rantai dependensi tidak boleh deadlock di cap. Slot dilepas
+saat hasil call dilaporkan. Hook tidak boleh menolak call.
+
+- Terima: tiga call paralel dengan cap dua → satu antre, ketiganya jalan;
+  slot kembali nol setelah call selesai; call nested tidak pernah menunggu.
+- Status: terpenuhi (`src/hooks/tools-pre-execute.ts`,
+  `test/unit/progress-bandwidth.spec.ts`).
+
+### FR-09 Hook `tools/result`
 
 Hook harus mencatat hasil tool ke worklog, menandai bukti baru untuk
 perhitungan konvergensi, dan membukukan biaya kasar per panggilan. Hook tidak
@@ -227,7 +245,7 @@ boleh mengubah hasil tool.
   `neutral` dengan daftar `unverified` terisi.
 - Status: terpenuhi.
 
-### FR-09 Hook `llm/stream`
+### FR-10 Hook `llm/stream`
 
 Hook harus menghitung token per stream, memberi alert pada 80 persen budget dan
 sinyal stop pada 100 persen, mem-fingerprint chunk untuk deteksi duplikat
@@ -238,7 +256,7 @@ sinyal stop pada 100 persen, mem-fingerprint chunk untuk deteksi duplikat
 - Status: terpenuhi di level hook. Jalur streaming LLM penuh belum pernah
   dieksekusi end-to-end (lihat §13).
 
-### FR-10 Hook lifecycle session
+### FR-11 Hook lifecycle session
 
 `session/created` harus mereset state episode (rung, replan, fork/merge,
 effort, label pass, jendela konvergensi). `turn/start` harus mereset budget
@@ -248,7 +266,7 @@ token stage dan counter fork/merge. `turn/end` harus membuat snapshot.
 - Terima: reset teramati; snapshot dan handoff punya id unik.
 - Status: terpenuhi (`src/hooks/session-event.ts`).
 
-### FR-11 State terbatas
+### FR-12 State terbatas
 
 Semua ledger harus punya batas dan membuang entri tertua lebih dulu. Total
 biaya per stage tidak boleh ikut turun saat cincin ledger membuang entri lama.
@@ -256,7 +274,7 @@ biaya per stage tidak boleh ikut turun saat cincin ledger membuang entri lama.
 - Terima: cap ditegakkan; `stageCost` tetap akumulatif.
 - Status: terpenuhi (`pushCapped`, `recordCost` di `src/policy-service.ts`).
 
-### FR-12 Determinisme
+### FR-13 Determinisme
 
 Seed, urutan iterasi, dan versi pin harus berasal dari config. Fingerprint
 konten harus stabil untuk input yang sama sehingga replay menghasilkan hash
@@ -266,7 +284,7 @@ yang sama.
   membandingkan hash.
 - Status: terpenuhi di level unit. Replay lintas proses belum diuji.
 
-### FR-13 Kebersihan encoding
+### FR-14 Kebersihan encoding
 
 Semua berkas teks: LF, UTF-8 tanpa BOM, newline di akhir berkas.
 
@@ -274,7 +292,7 @@ Semua berkas teks: LF, UTF-8 tanpa BOM, newline di akhir berkas.
 - Status: sebagian. Pada 79 berkas yang diperiksa, dua berkas tidak berakhir
   newline: `PLAYBOOK.md` dan `test/unit/audit-defects.spec.ts`.
 
-### FR-14 Paket bisa dipasang
+### FR-15 Paket bisa dipasang
 
 `package.json` harus memuat `dsh.bundle.patch`, menaruh paket dsh di
 `peerDependencies`, dan menyertakan `lib/`, `cordis.patch.yml`, README, serta
@@ -288,12 +306,13 @@ LICENSE di daftar `files`.
 
 ### 7.1 Yang benar-benar menahan
 
-Hanya tiga hal di bundle ini yang bisa menghentikan sesuatu.
+Hanya empat hal di bundle ini yang bisa menghentikan sesuatu.
 
 | Mekanisme | Perilaku |
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat dengan verdict `discarded`. Bila `escapeAction: 'abort'`, tool melempar sehingga envelope menjadi `ok:false`, bukan hasil yang terlihat sah. Allow-list kosong berarti read diizinkan dan write ditolak. Allow-list yang dideklarasikan dicocokkan persis. |
 | `human-in-the-loop` (27) | Fail-closed. `irreversible`, `external`, atau `estimatedCost` yang tidak dikirim tetap meminta approval. Tetap hanya berjalan bila model memanggil tool. |
+| Bandwidth (55) | Waterfall `tools/pre-execute` memegang satu slot pass paralel per session. Di atas `maxConcurrentPasses`, excess **antre** — call menunggu slot, bukan ditolak. Call nested (punya `parent`) tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
 | Isolasi fault hook | Error di `agent/pre-step` atau `llm/stream` dicatat, lalu step atau stream lanjut. Plugin tidak bisa membatalkan turn. |
 
 ### 7.2 Yang mengklasifikasi dan melapor
@@ -302,32 +321,29 @@ Hanya tiga hal di bundle ini yang bisa menghentikan sesuatu.
 |---|---|
 | `context-management` (1) | Aksi compact, drop, spill diklasifikasi dan dicatat. Tidak ada message list yang dipotong. |
 | `effort-escalation` (6) | `effortTier` naik dan dicatat. Parameter model tidak berubah. |
-| `reasoning-backpressure` (71) | Dilaporkan dari queue depth yang dikirim pemanggil. |
+| `progress-reporting` (4) | Jejak progres run dicatat dan ditampilkan. Menarasi transisi stage dan kegagalan gate; baris per-step sengaja tidak ada. |
+| `reasoning-backpressure` (71) | Dilaporkan dari queue depth yang dikirim pemanggil. Spec 55 yang mengukur antrean sungguhan. |
 | `idempotency` (19) | Cache hanya untuk tool murni. |
 | `research-provenance` (7) | Tag `[fetch:url]`, `[mem:era]`, `[inf]` ditempel pada string; tidak diverifikasi. |
 
-### 7.3 Delapan spec yang hidup di service atau hook
+### 7.3 Sembilan spec yang hidup di service atau hook
 
 | Spec | Nama | Mekanisme |
 |---|---|---|
+| 4 | progress-reporting | `recordProgress()` dari hook pre-step, hanya saat transisi stage atau gate gagal |
 | 6 | effort-escalation | `escalateEffort()` dipanggil hook pre-step, sekali per task |
 | 10 | session-handoff | `handoffSnapshot()` dipanggil saat session disposed |
 | 15 | parallel-vs-sequential | `labelPass()` dari hook stream, nilai `interleaved` |
 | 18 | rollback-protocol | `lastVerifiedSnapshot()` sebagai target rollback |
 | 43 | reasoning-cache | cache dipakai `defineTool` untuk semua tool murni |
+| 55 | reasoning-bandwidth | `acquireSlot()`/`releaseSlot()` dari hook pre-execute, excess diantre |
 | 58 | convergence-criteria | `converged()` dari jarak per turn dan bukti baru |
 | 96 | fork-merge-budget | `canFork()`, `canMerge()`, `recordFork()`, `recordMerge()` |
-| 100 | policy-registry | `PolicyRegistry`, perubahan berarti versi baru |
 
-### 7.4 Dua spec yang tidak ada
+### 7.4 Cakupan spec yang tersisa
 
-| Spec | Nama | Akibat |
-|---|---|---|
-| 4 | progress-reporting | Tidak ada format update progres. Narasi progres tetap tanggung jawab model. |
-| 55 | reasoning-bandwidth | `maxConcurrentPasses` ada di config dan divalidasi, tetapi tidak ada yang membatasi pass paralel. |
-
-Kedua spec ini tidak boleh dihitung sebagai fitur yang aktif. Kalau operator
-butuh, keduanya harus dibuat dan ditambahkan ke tabel 7.3 atau 7.1.
+Nol. Seluruh 100 spec di `sumber100specs.md` punya bentuk: 91 punya tool sendiri,
+9 hidup sebagai method service yang dipicu hook.
 
 ## 8. Referensi config
 
@@ -405,7 +421,7 @@ konsekuensinya.
 |---|---|---|
 | NFR-01 | Tidak ada `dependencies` pada paket inti dsh yang stateful; hanya `peerDependencies` | `package.json` |
 | NFR-02 | Semua tool mengembalikan nilai bertipe; tidak ada `void` | `defineTool` |
-| NFR-03 | Fault hook tidak boleh membatalkan turn | guard di keempat hook |
+| NFR-03 | Fault hook tidak boleh membatalkan turn | guard di kelima hook |
 | NFR-04 | Semua ledger terbatas | tabel §10 |
 | NFR-05 | Build dan test berjalan di Node sesuai `engines` | `pnpm test`, `pnpm typecheck` |
 | NFR-06 | Lisensi MIT dan encoding LF/UTF-8 | `LICENSE`, `.editorconfig`, §12 |
@@ -446,7 +462,10 @@ Suite test terdiri dari 15 berkas unit, 1 integration, dan 1 e2e.
    hasil build lokal. `lib/` tidak masuk git.
 5. **Registry tidak memvalidasi argumen input.** Kesalahan schema terdeteksi
    saat return, bukan saat registrasi.
-6. **Dua spec tidak ada.** Spec 4 dan 55 tidak boleh diklaim aktif.
+6. **State episode sudah per session, tapi jejak audit masih per host.**
+   Worklog, cost ledger, cache, snapshot store, dan lineage dibagi semua
+   session di satu host; counter yang menegakkan run sudah di-key per session.
+   Lihat §7.3 dan README "Known limits".
 7. **Drift dokumentasi.** README masih menulis namespace `fable51.*`; kode
    memakai `fable51_`. README juga menyebut 10 spec lain hidup sebagai method
    service, padahal hanya 8 yang punya implementasi dan 2 tidak ada.
@@ -456,8 +475,8 @@ Suite test terdiri dari 15 berkas unit, 1 integration, dan 1 e2e.
 
 | # | Pertanyaan | Dampak bila tidak dijawab |
 |---|---|---|
-| 1 | Apakah state harus diisolasi per session, dan siapa yang menyediakan identitas session? | Angka ledger salah saat dua session berjalan paralel |
-| 2 | Apakah spec 4 dan 55 akan diimplementasikan atau dicabut dari klaim 100 spec? | Klaim cakupan terus menyesatkan |
+| 1 | ~~Apakah state harus diisolasi per session, dan siapa yang menyediakan identitas session?~~ **Terjawab**: diisolasi per session; identitas datang dari host (`Agent.session.id`, `ToolExecution.agent`, `GenerateOptions.sessionId`, objek session lifecycle). | — |
+| 2 | ~~Apakah spec 4 dan 55 akan diimplementasikan atau dicabut dari klaim 100 spec?~~ **Terjawab**: keduanya diimplementasikan (FR-07 dan FR-08). | — |
 | 3 | Apakah validasi argumen tool dipindah ke waktu registrasi? | Schema rusak baru ketahuan saat dipanggil |
 | 4 | Apakah `lib/` akan dipublikasikan atau build dilakukan saat instalasi? | Tidak ada jaminan artefak yang dijalankan sama dengan sumber |
 | 5 | Apakah dua pelanggaran encoding diperbaiki di commit terpisah? | Gate encoding tidak bisa dipakai sebagai syarat rilis |

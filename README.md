@@ -1,7 +1,7 @@
 # fable-5-1-dsh
 
 Fable-5.1 reasoning discipline for DeepSeek Harness (`dsh`). One bundle: a
-policy service at `ctx.fable51`, four event hooks, and 92 tools prefixed
+policy service at `ctx.fable51`, five event hooks, and 92 tools prefixed
 `fable51_`. It records tool outcomes, verification verdicts, and per-stage
 costs, so a long run can be audited after the fact.
 
@@ -11,8 +11,8 @@ Measured at commit `3b701d6`:
 |---|---|
 | Target dsh | developer preview `0.2.0-rc.2`, commit `23c78fcdd5ee0b497a77ca356608c51093c74bb9` |
 | Runtime | Cordis, TypeScript, ESM only |
-| Tools | 92, one per implemented spec id |
-| Hooks | 4 (`agent/pre-step`, `tools/result`, `llm/stream`, `session/event`) |
+| Tools | 92, covering 91 spec ids |
+| Hooks | 5 (`agent/pre-step`, `tools/pre-execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget` |
 | License | MIT |
@@ -21,13 +21,12 @@ Coverage of the 100 specs in `sumber100specs.md`:
 
 | Class | Count | Where |
 |---|---|---|
-| Tool-backed | 92 | `fable51_<name>` on the tool surface |
-| Service method driven by a hook | 6 | specs 10, 15, 18, 43, 58, 96 |
-| Not implemented | 2 | spec 4 `progress-reporting`, spec 55 `reasoning-bandwidth` |
+| Tool-backed | 91 | `fable51_<name>` on the tool surface (92 tools; spec 11 and spec 100 each carry a second tool) |
+| Service method driven by a hook | 9 | specs 4, 6, 10, 15, 18, 43, 55, 58, 96 |
+| Not implemented | 0 | — |
 
-The two missing specs are not claimed as features. Spec 4 has no progress
-format, and spec 55 validates `maxConcurrentPasses` in config without enforcing
-a concurrency cap. Read [What enforces and what only reports](#what-enforces-and-what-only-reports)
+Every spec in the inventory is now backed by something that runs. Read
+[What enforces and what only reports](#what-enforces-and-what-only-reports)
 before relying on a spec as a control: several are classifiers, not gates.
 
 ## Install
@@ -165,13 +164,15 @@ you rely on one as a control.
 |---|---|
 | `sandbox-boundaries` (26) | An escape is logged with verdict `discarded`; when `escapeAction: 'abort'`, the tool throws and the envelope becomes `ok:false` instead of a result that looks usable. An empty allow-list allows reads and denies writes. A declared list is exact-match. |
 | `human-in-the-loop` (27) | Fails closed: an omitted `irreversible`, `external`, or `estimatedCost` still requests approval. It only runs when the model calls it. |
+| Bandwidth (55) | The `tools/pre-execute` waterfall holds a parallel-pass slot. Over `maxConcurrentPasses`, the excess **queues** — the call waits for a slot instead of being refused. A nested call takes no slot, so a dependency chain cannot deadlock on the cap. |
 | Hook fault isolation | A fault in `agent/pre-step` or `llm/stream` is logged, then the step or stream continues. A plugin cannot veto a turn. |
 
 | Reports only | Consequence |
 |---|---|
 | `context-management` (1) | The compact, drop, or spill action is classified and logged. No message list is truncated or spilled. |
 | Effort escalation (6) | `effortTier` is raised and logged. No model parameter changes. |
-| Backpressure (71) | Reported from a queue depth the caller supplies; not measured. |
+| Backpressure (71) | Reported from a queue depth the caller supplies; not measured. Spec 55 measures the real queue. |
+| Progress reporting (4) | The run's progress trail is recorded and shown. It narrates a stage transition and a gate failure; a per-step line is deliberately absent. |
 | Tool cache | Idempotent replay covers pure computations. Tools marked `effectful` always re-execute. |
 
 In short: do not use this bundle as a sandbox or an approval mechanism. It is a
@@ -182,7 +183,8 @@ own permissions.
 
 - **Surface-verified integration.** Every hook and API this bundle touches was
   checked against the pinned dsh commit's source: `agent/pre-step` (waterfall,
-  `PreStepDecision`), `tools/result` (emit), `llm/stream` (waterfall),
+  `PreStepDecision`), `tools/pre-execute` (waterfall, `PreToolDecision`),
+  `tools/result` (emit), `llm/stream` (waterfall),
   `session/event` plus `session/created` and `session/disposed` (emit),
   `ctx.tools.register(definition)` returning a disposer. `RECON.md` holds the
   file and line evidence.
@@ -195,7 +197,9 @@ own permissions.
   references an unknown parent is rejected.
 - **Bounded state.** The worklog, gate log, cost ledger, reason cache, and
   snapshot store evict oldest-first. Per-stage cost totals survive eviction. The
-  per-turn stage token budget resets on `turn/start`.
+  per-turn stage token budget resets on `turn/start`, for that session only.
+  Each run's episode is bounded too: at most 64 live sessions, 200 progress
+  records per run.
 - **Encoding hygiene:** LF, UTF-8 without BOM, final newline on every text file.
 
 ## Testing
@@ -207,8 +211,8 @@ pnpm build       # emit lib/ (including lib/cli.js, the CLI entry point)
 ```
 
 At commit `3b701d6`: 227 tests in 89 suites pass, and `pnpm typecheck` exits 0.
-With the visualizer, budget advisor, CLI, and per-session episodes: 261 tests in
-93 suites pass.
+With the visualizer, budget advisor, CLI, per-session episodes, and specs 4 and
+55: 271 tests in 95 suites pass.
 The integration and e2e suites load the bundle into a real Cordis host with the
 real dsh services (`dsh-tools`, `dsh-llm`, `dsh-session`, `dsh-system-prompt`)
 and drive real event dispatches. `pnpm typecheck` covers `test/**` as well as
@@ -240,8 +244,6 @@ and drive real event dispatches. `pnpm typecheck` covers `test/**` as well as
   `PRD_REVISI.md` section 11 records the cross-check against
   `sumber100specs.md`: 100 ids and names match. The "Kills" column in the older
   spec document is an operator annotation on top of the source rules.
-- **Two specs have no implementation** (4 and 55). Config for 55 is validated but
-  nothing enforces it.
 - **Runtime imports** are `@deepseek-ai/cordis` (service and context),
   `@deepseek-ai/schemastery` (the `Config` schema), and `node:crypto`. The
   `dsh-llm`, `dsh-agent`, and `dsh-session` imports are type-only.
