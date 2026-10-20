@@ -30,8 +30,9 @@ Dari 100 spec di `sumber100specs.md`:
 
 | Kelas | Jumlah | Bentuk |
 |---|---|---|
-| Punya tool sendiri | 91 | tool `fable51_<nama>` (92 tool; spec 11 dan 100 masing-masing punya tool kedua) |
-| Hidup sebagai method service yang dipicu hook | 9 | spec 4, 6, 10, 15, 18, 43, 55, 58, 96 |
+| Punya tool sendiri | 91 | tool `fable51_<nama>` (92 tool; spec 11 punya tool kedua) |
+| Hidup sebagai method service yang dipicu hook | 6 | spec 4, 6, 10, 15, 55, 58 |
+| Hidup sebagai method service yang dipanggil tool | 3 | spec 18, 43, 96 |
 | Tidak diimplementasikan | 0 | tidak ada |
 
 Angka 92 berasal dari enumerasi `allToolSpecs()` di `src/tools/index.ts`.
@@ -56,8 +57,8 @@ Sebaran per kelompok:
 Nama tool memakai garis bawah, bukan titik. Alasannya ada di
 `src/tools/shared.ts`: provider yang kompatibel dengan OpenAI menolak nama tool
 di luar pola `^[a-zA-Z0-9_-]+$`, sehingga namespace `fable51.` berubah menjadi
-`fable51_` di commit `1255017`. README masih menulis `fable51.*` dan perlu
-dikoreksi.
+`fable51_` di commit `1255017`. README sudah memakai
+`fable51_`.
 
 ## 2. Masalah yang diselesaikan
 
@@ -167,7 +168,7 @@ baris log yang menyebut jumlah tool. Aktivasi tidak boleh diasumsikan dari
 92 tool harus terdaftar dengan nama `fable51_<nama>`, satu tool per spec yang
 dikelompokkan, dan tidak ada nama dobel.
 
-- Terima: `allToolSpecs()` mengembalikan 90 nama unik dengan prefiks benar.
+- Terima: `allToolSpecs()` mengembalikan 92 nama unik dengan prefiks benar.
 - Status: terpenuhi. Diverifikasi dengan enumerasi dan
   `test/unit/tool-name-pattern.spec.ts`.
 
@@ -188,7 +189,7 @@ harus selalu eksekusi ulang dan tidak pernah membaca cache.
 
 - Terima: panggilan kedua dengan input sama mengembalikan `rerun:true`; 26 tool
   effectful selalu eksekusi ulang.
-- Status: terpenuhi. Enumerasi mencatat 26 tool effectful, 64 tool murni.
+- Status: terpenuhi. Enumerasi mencatat 26 tool effectful, 66 tool murni.
 
 ### FR-05 Verdict tidak boleh mengarang
 
@@ -346,7 +347,7 @@ Hanya empat hal di bundle ini yang bisa menghentikan sesuatu.
 ### 7.4 Cakupan spec yang tersisa
 
 Nol. Seluruh 100 spec di `sumber100specs.md` punya bentuk: 91 punya tool sendiri,
-9 hidup sebagai method service yang dipicu hook.
+9 hidup sebagai method service: 6 dipicu hook, 3 dipanggil tool.
 
 ## 8. Referensi config
 
@@ -438,7 +439,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
 | Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
-| Suite test | `pnpm test` | 271 test, 95 suite, 271 lulus, 0 gagal | lulus |
+| Suite test | `pnpm test` | 276 test, 95 suite, 276 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |
@@ -483,9 +484,9 @@ Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
    Worklog, cost ledger, cache, snapshot store, dan lineage dibagi semua
    session di satu host; counter yang menegakkan run sudah di-key per session.
    Lihat §7.3 dan README "Known limits".
-7. **Drift dokumentasi.** README menulis namespace `fable51.*`; kode memakai
-   `fable51_`. README juga menyebut 10 spec hidup sebagai method service,
-   padahal 9 yang punya implementasi.
+7. **Drift dokumentasi.** Sudah tertutup: README memakai namespace `fable51_`
+   dan menyebut 9 spec hidup sebagai method service (6 dipicu hook, 3 dipanggil
+   tool), sesuai §7.3.
 8. **Aturan encoding.** Terpenuhi sekarang: 0 pelanggaran pada seluruh berkas
    tracked. Lihat FR-14.
 

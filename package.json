@@ -1,7 +1,7 @@
 {
   "name": "fable-5-1-dsh",
   "version": "0.1.1",
-  "description": "Fable-5.1 reasoning-orchestration bundle for DeepSeek Harness: 100 specs enforced by one policy service, four event hooks, and namespaced tools.",
+  "description": "Fable-5.1 reasoning-orchestration bundle for DeepSeek Harness: 100 specs enforced by one policy service, five event hooks, and namespaced tools.",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",

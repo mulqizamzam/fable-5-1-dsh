@@ -1,7 +1,7 @@
 /**
  * Unit: cost tool group, specs 11, 60, 95, 97 (PRD §4.2/§4.5/§4.9, Gate 4d).
  *
- * Host setup mirrors test/integration/bundle.spec.ts / test/unit/__probe.spec.ts:
+ * Host setup mirrors test/integration/bundle.spec.ts:
  * a real Cordis Context with the real dsh services. Fable51Policy injects
  * ['tools','llm','sessions'], so all four services must load or the plugin
  * stays pending and ctx.fable51 never resolves.

@@ -193,7 +193,7 @@ pecahan. Semuanya jadi `ConfigError` dengan path field yang tepat.
 | `observability` | 24, 79 | `traceLevel stage`, `logFormat line` |
 | `registry` | 100 | `policies []` |
 
-Contoh config partial di `cordis.patch.yml`:
+Contoh config partial, ditulis di blok `config:` pada `cordis.patch.yml`:
 
 ```yaml
 - id: fable-5-1
@@ -277,7 +277,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan 271 test di 95 suite dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 276 test di 95 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -308,6 +308,13 @@ verdict:"verified", unverified:[], rerun:false, gates:[]}` dari log sesi
 dinarasi, dan tidak ada baris per-step. Run ketiga memaksa dua tool call
 dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
+
+**Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
+`pnpm test` menjalankan 276 test di 95 suite, semuanya lulus; `pnpm typecheck`
+exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
+1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
+`--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
+or ascii`.
 
 **Belum diverifikasi:** perilaku setelah restart host belum diuji, klaim di §1
 masih menunggu konfirmasi restart; `fable51 advise-budget` belum diuji dengan

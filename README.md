@@ -26,7 +26,7 @@ Status di host ini, diverifikasi 2026-10-20:
 | Hook | 5 (`agent/pre-step`, `tools/pre-execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget` |
-| Test | 271 di 95 suite, semuanya lulus |
+| Test | 276 di 95 suite, semuanya lulus |
 | Lisensi | MIT |
 
 Cakupan 100 spec di `sumber100specs.md`:
@@ -34,7 +34,8 @@ Cakupan 100 spec di `sumber100specs.md`:
 | Kelas | Jumlah | Bentuk |
 |---|---|---|
 | Punya tool sendiri | 91 | tool `fable51_<nama>` (92 tool; spec 11 punya tool kedua) |
-| Method service yang dipicu hook | 9 | spec 4, 6, 10, 15, 18, 43, 55, 58, 96 |
+| Method service yang dipicu hook | 6 | spec 4, 6, 10, 15, 55, 58 |
+| Method service yang dipanggil tool | 3 | spec 18, 43, 96 |
 | Tidak diimplementasikan | 0 | tidak ada |
 
 ---
@@ -200,7 +201,7 @@ pnpm build       # emit lib/, termasuk lib/cli.js
 
 Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
 0. Dengan visualizer, budget advisor, CLI, episode per-session, serta spec 4
-dan 55: **271 test di 95 suite lulus**.
+dan 55, serta validasi `--format` di CLI: **276 test di 95 suite lulus**.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
@@ -239,9 +240,13 @@ service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
   `PRD_REVISI.md` bagian 11 mencatat cross-check terhadap `sumber100specs.md`:
   100 id dan nama cocok. Kolom "Kills" di dokumen spec lama adalah anotasi
   operator di atas aturan sumber.
-- **Import runtime** adalah `@deepseek-ai/cordis` (service dan context),
-  `@deepseek-ai/schemastery` (schema `Config`), dan `node:crypto`. Import
-  `dsh-llm`, `dsh-agent`, dan `dsh-session` hanya untuk tipe.
+- **Import runtime** pada jalur plugin (`src/index.ts`) adalah
+  `@deepseek-ai/cordis` (service dan context), `@deepseek-ai/schemastery`
+  (schema `Config`), dan `node:crypto`. Import `dsh-llm`, `dsh-agent`, dan
+  `dsh-session` di sana hanya untuk tipe. Entry CLI (`src/cli.ts`) berbeda:
+  ia meng-import `dsh-tools`, `dsh-llm`, `dsh-session`, dan
+  `dsh-system-prompt` sebagai runtime dependency. `dsh-system-prompt` tidak
+  ada di `peerDependencies` paket ini, jadi host harus menyediakannya.
   `schemastery` resolve lewat dependensi `dsh-tools` host dan tidak
   dideklarasikan langsung di `peerDependencies` paket ini.
 
