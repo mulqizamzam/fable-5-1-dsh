@@ -23,7 +23,7 @@ Status di host ini, diverifikasi 2026-10-20:
 | Target dsh | developer preview `0.2.0-rc.2`, commit `23c78fcdd5ee0b497a77ca356608c51093c74bb9` |
 | Runtime | Cordis, TypeScript, ESM only |
 | Tool | 92, mencakup 91 spec id |
-| Hook | 5 (`agent/pre-step`, `tools/pre-execute`, `tools/result`, `llm/stream`, `session/event`) |
+| Hook | 5 (`agent/pre-step`, `tools/execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget` |
 | Test | 282 di 96 suite, semuanya lulus |
@@ -148,7 +148,7 @@ mana sebelum memakainya sebagai kontrol.
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat dengan verdict `discarded`. Kalau `escapeAction: 'abort'`, tool melempar dan envelope jadi `ok:false`, bukan hasil yang kelihatan pakai. Allow-list kosong mengizinkan read dan menolak write. Allow-list yang dideklarasikan dicocokkan persis. |
 | `human-in-the-loop` (27) | Fail-closed: `irreversible`, `external`, atau `estimatedCost` yang tidak dikirim tetap minta persetujuan. Hanya jalan kalau model memanggil tool. |
-| Bandwidth (55) | Waterfall `tools/pre-execute` memegang satu slot pass paralel per session. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
+| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
 | Isolasi fault hook | Fault di `agent/pre-step` atau `llm/stream` dicatat, lalu step atau stream lanjut. Plugin tidak bisa membatalkan turn. |
 
 | Cuma lapor | Konsekuensi |
@@ -167,7 +167,7 @@ mengikat adalah permission DSH sendiri.
 
 - **Integrasi terverifikasi di permukaan.** Setiap hook dan API yang dipakai
   bundle ini dicek terhadap source commit dsh yang dipin: `agent/pre-step`
-  (waterfall, `PreStepDecision`), `tools/pre-execute` (waterfall,
+  (waterfall, `PreStepDecision`), `tools/execute` (around-dispatch waterfall,
   `PreToolDecision`), `tools/result` (emit), `llm/stream` (waterfall),
   `session/event` plus `session/created` dan `session/disposed` (emit),
   `ctx.tools.register(definition)` yang mengembalikan disposer. Bukti file dan
@@ -202,7 +202,7 @@ pnpm build       # emit lib/, termasuk lib/cli.js
 Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
 0. Dengan visualizer, budget advisor, CLI, episode per-session, spec 4 dan 55,
 validasi `--format` di CLI, advisor dengan ledger terisi, dan kontrak peer
-dependensi: **282 test di 96 suite lulus**.
+dependensi: **283 test di 96 suite lulus**.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
@@ -223,15 +223,16 @@ service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
   dan eksekusi tool, `GenerateOptions.sessionId` untuk stream hook, dan objek
   session untuk event lifecycle. Call yang tidak diatribusikan host masuk ke
   bucket `default` tersendiri, yang tidak di-reset turn session mana pun.
-- **Host men-serialisasi tool call, jadi cap bandwidth tak terjangkau di
-  dsh 0.2.0-rc.2.** Tiga bukti independen: log sesi menunjukkan urutan
-  `tool/call`, `tool/result`, `tool/call`, `tool/result` di dalam satu step
-  walau model mengirim dua call sekaligus; host punya tepat satu call site
-  `ctx.tools.execute` di luar test, dan itu satu `await`; dan bundle ini tidak
-  punya tool komposit yang memancarkan call. Pada satu sesi headless dengan
-  lima panggilan tool, `fable51 inspect` melaporkan `inFlight` 1, `peak` 1,
-  `queued` 0. Cap bandwidth (55) mengikat dispatch programatik, dan akan
-  mengikat jalur model pada versi host yang memarshal call secara paralel.
+- **Cap bandwidth itu per session, jadi bukan cap host.** Satu session
+  maksimal menjalankan `maxConcurrentPasses` pass paralel, tapi dua session
+  di host yang sama masing-masing mendapat jatah penuh, jadi konkurensi
+  host bisa jadi beberapa kali lipat cap itu. Host punya cap sendiri
+  (`maxParallelToolCalls`, default 10); yang lebih kecil dari dua cap itu
+  yang mengikat.
+- **Tool yang tidak mendeklarasikan `isConcurrencySafe` berjalan eksklusif.**
+  Host dispatch paralel hanya untuk tool yang menandainya, misalnya `read`.
+  Tool `fable51_*` sendiri tidak menandainya, jadi beberapa tool yang dipanggil
+  sekaligus berjalan berurutan dan tidak pernah menyentuh cap.
 - **Tidak ada CI dan tidak ada lockfile.** `lib/` ada di `.gitignore`, jadi
   artifact yang dijalankan host adalah apa pun yang ter-build lokal. Berlaku
   juga untuk CLI: `bin/fable51.js` adalah shim ke `lib/cli.js`, jadi butuh

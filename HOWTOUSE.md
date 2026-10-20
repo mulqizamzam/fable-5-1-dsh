@@ -11,7 +11,7 @@ Status di host ini, diverifikasi 2026-10-20:
 | Profile uji | `$DSH_HOME/profiles/fable-test` (`dsh-base` + `dsh-headless` + `dsh-ui-director` + bundle ini) |
 | Entry id | `fable-5-1` |
 | Tool | 92 tool `fable51_*` (91 spec id; spec 11 punya dua tool) |
-| Hook | 5 (`agent/pre-step`, `tools/pre-execute`, `tools/result`, `llm/stream`, `session/event`) |
+| Hook | 5 (`agent/pre-step`, `tools/execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 
 ---
@@ -168,7 +168,7 @@ Paling sering disalahpahami. Baca sebelum menjadikannya kontrol.
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat ke worklog dengan `verdict:'discarded'`. Kalau `escapeAction:'abort'` tool melempar, jadi `ok:false`, bukan hasil yang kelihatan pakai. Allow-list kosong berarti read boleh, write ditolak. Allow-list yang dideklarasikan dicocokkan persis. |
 | `human-in-the-loop` (27) | Fail-closed: `irreversible`/`external`/`estimatedCost` yang kosong tetap minta persetujuan. Tetap hanya jalan kalau model memanggil tool. |
-| Bandwidth (55) | Waterfall `tools/pre-execute` memegang satu slot pass paralel per session. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
+| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
 | Isolasi fault hook | Error di `agent/pre-step` atau `llm/stream` dicatat lalu step/stream lanjut. Plugin tidak bisa membatalkan turn. |
 
 ### Hanya mengklasifikasi & melapor
@@ -254,13 +254,15 @@ memakai artifact lama sampai restart.
    session untuk event lifecycle. Call yang tidak diatribusikan host masuk ke
    bucket `default` tersendiri, yang tidak di-reset turn session mana pun.
 
-2. **Host men-serialisasi tool call yang digerakkan model.** Terverifikasi di
-   commit dsh yang dipin: dua tool call dalam satu pesan assistant tetap
-   didispatch berurutan (`tool/call`, `tool/result`, `tool/call`,
-   `tool/result` dalam satu step). Cap bandwidth (55) karena itu tidak pernah
-   aktif untuk call yang dibuat model. Ia mengikat dispatch programatik,
-   tempat tool komposit memancarkan call paralel. `fable51 inspect` melaporkan
-   `peak: 1` di run yang digerakkan model karena itu.
+2. **Host dispatch paralel hanya untuk tool yang mendeklarasikan
+   `isConcurrencySafe`.** Tool `read` milik host punya, tool `fable51_*` milik
+   bundle ini tidak. Jadi beberapa tool `fable51_*` yang dipanggil sekaligus
+   berjalan berurutan, sementara tool host yang ditandai berjalan paralel dan
+   **tetap terikat cap**: satu sesi headless dengan lima `read` paralel
+   melaporkan `peak` 4 pada cap 4. Cap-nya per session, jadi dua session di
+   host yang sama masing-masing mendapat jatah penuh; host punya cap sendiri
+   (`maxParallelToolCalls`, default 10) dan yang lebih kecil dari dua cap itu
+   yang mengikat.
 
    Jalur agent-loop penuh sudah dieksekusi end-to-end pada 2026-10-20 lewat
    `dsh --profile fable-test headless`.
@@ -293,7 +295,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan seluruh suite (sekarang 282 test di 96 suite) dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 283 test di 96 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -326,7 +328,7 @@ dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
 
 **Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
-`pnpm test` menjalankan 282 test di 96 suite, semuanya lulus; `pnpm typecheck`
+`pnpm test` menjalankan 283 test di 96 suite, semuanya lulus; `pnpm typecheck`
 exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
@@ -360,16 +362,25 @@ di rationale. `test/unit/budget-advisor.spec.ts` mengunci perhitungannya:
 sepuluh booking 200.000 token menghasilkan `stageTokenBudget` 1.000.000 untuk
 kelas `open` (200.000 dikali 5.0), bukan default ledger kosong.
 
-**Diverifikasi bahwa host tidak pernah menyalakan call konkuren (2026-10-21):**
-pada sesi yang sama, `bandwidth` melaporkan `inFlight` 1, `peak` 1, `queued` 0
-selama lima panggilan tool. Tiga bukti independen: log sesi menNONJUKKAN
-urutan call lalu result di dalam satu step; host punya tepat satu call site
-`ctx.tools.execute` di luar test (`sdk/server/src/server.ts:230`, satu
-`await`); dan bundle ini sendiri tidak punya tool komposit yang memancarkan
-call. Jadi jalur antrean tidak bisa dipicu host pada dsh 0.2.0-rc.2. Yang
-membuktikan antrean bekerja adalah
-`test/unit/progress-bandwidth.spec.ts`, yang memanggil tiga tool konkuren
-dengan cap dua dan memastikan satu diantre, bukan ditolak.
+**Diverifikasi bahwa antrean bandwidth benar-benar mengikat di host nyata
+(2026-10-21):** satu sesi headless mengirim lima panggilan `read` dalam satu
+pesan assistant. Host dispatch-nya paralel, karena `read` mendeklarasikan
+`isConcurrencySafe`. `fable51 inspect` melaporkan `peak` 4 dengan cap 4, jadi
+cap itu mengikat jalur tersebut: yang kelima menunggu slot, bukan ditolak. Log
+sesi menunjukkan kelima `read` itu keluar dalam satu pesan, dan
+`step` yang sama.
+
+**Defect yang ditemukan dan diperbaiki saat itu (2026-10-21):** versi pertama
+mengambil slot di waterfall `tools/pre-execute` dan melepaskannya saat
+`tools/result`. Itu membuat host **macet**: host menunggu prepare setiap call
+sebelum memulai call berikutnya, sementara hasil call baru dinotifikasi saat
+commit, dan commit terjadi di belakang await itu. Call yang sudah jalan
+selesai, tapi hasil-nya tidak pernah di-commit, jadi slot tidak pernah lepas.
+Sesi headless dengan lima `read` paralel menggantung lebih dari 220 detik.
+Slot sekarang diambil dan dilepas di dalam waterfall `tools/execute`, yang
+membingkai body tool, jadi pelepasannya dijamin terjadi saat dispatch.
+`test/unit/progress-bandwidth.spec.ts` mengunci itu: dengan desain lama, test
+tersebut menggantung dan dibunuh runner.
 
 **Belum diverifikasi:** tool selain yang disebut di atas tidak dipanggil
 langsung.

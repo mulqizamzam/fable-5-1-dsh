@@ -2,7 +2,7 @@
  * Integration: the bundle activates in a real Cordis host with the real dsh
  * services (Gate 1), validates config fail-loud (Gate 2), and four hook
  * families fire (Gate 3): agent/pre-step, tools/result, llm/stream and
- * session/event. This file does not cover tools/pre-execute; that hook is
+ * session/event. This file does not cover tools/execute; that hook is
  * covered by test/unit/progress-bandwidth.spec.ts.
  */
 import { describe, it } from 'node:test'

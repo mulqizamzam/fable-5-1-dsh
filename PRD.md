@@ -97,7 +97,7 @@ paling sering dipakai ada di `HOWTOUSE.md`.
 
 - Satu policy service yang menyimpan registry, lineage, cache, snapshot,
   gate log, worklog, dan cost ledger.
-- Lima hook event: `agent/pre-step`, `tools/pre-execute`, `tools/result`,
+- Lima hook event: `agent/pre-step`, `tools/execute`, `tools/result`,
   `llm/stream`, `session/event` (ditambah `session/created` dan
   `session/disposed`).
 - 92 tool dengan envelope hasil seragam.
@@ -134,7 +134,7 @@ dsh host
 │   └── costLedger    cincin 5000 + total per stage
 ├── hooks
 │   ├── agent/pre-step      waterfall, observasional + progress
-│   ├── tools/pre-execute   waterfall, gerbang bandwidth
+│   ├── tools/execute        waterfall around-dispatch, gerbang bandwidth
 │   ├── tools/result        emit, mencatat bukti dan biaya
 │   ├── llm/stream          waterfall generator, penghitung token
 │   └── session/*           lifecycle + durable event
@@ -226,17 +226,26 @@ diizinkan lewat `next()`.
 - Status: terpenuhi. Klasifikasi context hanya mencatat; tidak memotong atau
   memindahkan message list.
 
-### FR-08 Hook `tools/pre-execute`
+### FR-08 Hook `tools/execute`
 
-Hook harus memegang satu slot pass paralel per session sebelum call dispatch.
-Di atas `maxConcurrentPasses`, excess **antre**: call menunggu slot, bukan
-ditolak. Call nested (yang punya `parent`) tidak mengambil slot dan tidak
-pernah menunggu, karena rantai dependensi tidak boleh deadlock di cap. Slot dilepas
-saat hasil call dilaporkan. Hook tidak boleh menolak call.
+Hook harus memegang satu slot pass paralel per session, di sekitar body tool:
+slot diambil sebelum body berjalan dan dilepas setelah body selesai, di dalam
+waterfall yang sama. Di atas `maxConcurrentPasses`, excess **antre**: call
+menunggu slot, bukan ditolak. Call nested (yang punya `parent`) tidak mengambil
+slot dan tidak pernah menunggu, karena rantai dependensi tidak boleh deadlock di
+cap. Hook tidak boleh menolak call.
+
+Slot tidak boleh diambil di waterfall pre-execute. Host menunggu prepare setiap
+call sebelum memulai call berikutnya, dan hasil call baru dinotifikasi saat
+commit, yang terjadi di belakang await itu. Menahan slot di sana membuat host
+macet: call yang sudah jalan selesai, tapi hasil-nya tidak pernah di-commit,
+jadi slot tidak pernah lepas. Waterfall `tools/execute` membingkai body, jadi
+pelepasannya dijamin terjadi saat dispatch, bukan saat commit.
 
 - Terima: tiga call paralel dengan cap dua → satu antre, ketiganya jalan;
-  slot kembali nol setelah call selesai; call nested tidak pernah menunggu.
-- Status: terpenuhi (`src/hooks/tools-pre-execute.ts`,
+  slot kembali nol setelah call selesai; call nested tidak pernah menunggu;
+  grup paralel yang melampaui cap tidak membuat host macet.
+- Status: terpenuhi (`src/hooks/tools-execute.ts`,
   `test/unit/progress-bandwidth.spec.ts`).
 
 ### FR-09 Hook `tools/result`
@@ -316,7 +325,7 @@ Hanya empat hal di bundle ini yang bisa menghentikan sesuatu.
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat dengan verdict `discarded`. Bila `escapeAction: 'abort'`, tool melempar sehingga envelope menjadi `ok:false`, bukan hasil yang terlihat sah. Allow-list kosong berarti read diizinkan dan write ditolak. Allow-list yang dideklarasikan dicocokkan persis. |
 | `human-in-the-loop` (27) | Fail-closed. `irreversible`, `external`, atau `estimatedCost` yang tidak dikirim tetap meminta approval. Tetap hanya berjalan bila model memanggil tool. |
-| Bandwidth (55) | Waterfall `tools/pre-execute` memegang satu slot pass paralel per session. Di atas `maxConcurrentPasses`, excess **antre**: call menunggu slot, bukan ditolak. Call nested (punya `parent`) tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
+| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, excess **antre**: call menunggu slot, bukan ditolak. Call nested (punya `parent`) tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
 | Isolasi fault hook | Error di `agent/pre-step` atau `llm/stream` dicatat, lalu step atau stream lanjut. Plugin tidak bisa membatalkan turn. |
 
 ### 7.2 Yang mengklasifikasi dan melapor
@@ -340,7 +349,7 @@ Hanya empat hal di bundle ini yang bisa menghentikan sesuatu.
 | 15 | parallel-vs-sequential | `labelPass()` dari hook stream, nilai `interleaved` |
 | 18 | rollback-protocol | `lastVerifiedSnapshot()` sebagai target rollback |
 | 43 | reasoning-cache | cache dipakai `defineTool` untuk semua tool murni |
-| 55 | reasoning-bandwidth | `acquireSlot()`/`releaseSlot()` dari hook pre-execute, excess diantre |
+| 55 | reasoning-bandwidth | `acquireSlot()`/`releaseSlot()` dari hook tools/execute, excess diantre |
 | 58 | convergence-criteria | `converged()` dari jarak per turn dan bukti baru |
 | 96 | fork-merge-budget | `canFork()`, `canMerge()`, `recordFork()`, `recordMerge()` |
 
@@ -439,7 +448,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
 | Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
-| Suite test | `pnpm test` | 282 test, 96 suite, 282 lulus, 0 gagal | lulus |
+| Suite test | `pnpm test` | 283 test, 96 suite, 283 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |
@@ -450,7 +459,8 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | CLI | `node bin/fable51.js inspect` dan `advise-budget` | ASCII dan JSON | lulus |
 | Host pasca-restart | `ps` untuk waktu start host, impor `lib/tools/index.js` | 92 tool, host start 53 menit setelah build | lulus |
 | Advisor dengan ledger terisi | `test/unit/budget-advisor.spec.ts` + sesi headless | 200.000 token x 5.0 = 1.000.000, sampleSize 4 di host | lulus |
-| Antrean bandwidth tak terjangkau host | log sesi + grep call site host | peak 1, queued 0; satu call site non-test | Terkarakterisasi |
+| Antrean bandwidth mengikat di host nyata | sesi headless: 5 `read` paralel | peak 4 pada cap 4, yang kelima diantre | lulus |
+| Grup paralel tidak membuat host macet | `test/unit/progress-bandwidth.spec.ts` | desain lama hang >220 detik, desain baru 38 detik | lulus |
 
 Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
 
@@ -468,18 +478,16 @@ Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
    `sandbox-boundaries` atau `human-in-the-loop` sebagai satu-satunya kontrol.
    Keduanya hanya berjalan bila model memanggil tool, dan yang pertama hanya
    membandingkan string path.
-3. **Host men-serialisasi tool call, jadi cap bandwidth tak terjangkau di
-   dsh 0.2.0-rc.2.** Tiga bukti independen. (a) Log sesi: model yang
-   mengirim dua tool call dalam satu pesan assistant tetap didispatch
-   berurutan, `tool/call` lalu `tool/result` lalu `tool/call` lalu
-   `tool/result`, semuanya di dalam satu step. (b) Host punya tepat satu call
-   site `ctx.tools.execute` di luar test, `sdk/server/src/server.ts:230`, dan
-   itu satu `await`. (c) Bundle ini sendiri tidak punya tool komposit yang
-   memancarkan call. Pada satu sesi headless dengan lima panggilan tool,
-   `fable51 inspect` melaporkan `inFlight` 1, `peak` 1, `queued` 0, dan
-   `saturated` false. Cap bandwidth (55) mengikat dispatch programatik dan
-   akan mengikat jalur model pada versi host yang memarshal call secara
-   paralel; jalur itu belum ada di sini. Jalur agent-loop penuh sendiri sudah dijalankan end-to-end
+3. **Cap bandwidth itu per session, bukan cap host.** Satu session maksimal
+   menjalankan `maxConcurrentPasses` pass paralel, tapi dua session di host
+   yang sama masing-masing mendapat jatah penuh. Host punya cap sendiri
+   (`maxParallelToolCalls`, default 10); yang lebih kecil dari dua cap itu
+   yang mengikat. Terverifikasi di host nyata: satu sesi headless dengan
+   lima panggilan `read` paralel (tool `read` mendeklarasikan
+   `isConcurrencySafe`, jadi host dispatch-nya paralel) melaporkan `peak` 4
+   dengan cap 4, jadi cap ini benar-benar mengikat jalur itu. Tool
+   `fable51_*` sendiri tidak mendeklarasikan `isConcurrencySafe`, jadi
+   beberapa tool yang dipanggil sekaligus berjalan berurutan. Jalur agent-loop penuh sendiri sudah dijalankan end-to-end
    pada 2026-10-20 lewat `dsh --profile fable-test headless`: envelope asli
    `fable51_chain-vs-tree` diterima, dan spec 4 serta 55 terverifikasi lewat
    jalur yang sama.
