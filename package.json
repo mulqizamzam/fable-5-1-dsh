@@ -48,7 +48,8 @@
     "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2",
     "@deepseek-ai/dsh-llm": ">=0.2.0-rc.2",
     "@deepseek-ai/dsh-agent": ">=0.2.0-rc.2",
-    "@deepseek-ai/dsh-session": ">=0.2.0-rc.2"
+    "@deepseek-ai/dsh-session": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-system-prompt": ">=0.2.0-rc.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-llm": {
@@ -58,6 +59,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-session": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-system-prompt": {
       "optional": true
     }
   },

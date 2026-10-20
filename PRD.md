@@ -439,7 +439,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
 | Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
-| Suite test | `pnpm test` | 279 test, 95 suite, 279 lulus, 0 gagal | lulus |
+| Suite test | `pnpm test` | 282 test, 96 suite, 282 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |

@@ -293,7 +293,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan seluruh suite (sekarang 276 test di 95 suite) dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 282 test di 96 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -326,11 +326,19 @@ dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
 
 **Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
-`pnpm test` menjalankan 276 test di 95 suite, semuanya lulus; `pnpm typecheck`
+`pnpm test` menjalankan 282 test di 96 suite, semuanya lulus; `pnpm typecheck`
 exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
 or ascii`.
+
+**Diverifikasi saat menutup gap peer dependensi (2026-10-21):**
+`dsh-system-prompt` dideklarasikan sebagai peer optional dengan range
+`>=0.2.0-rc.2`, sama dengan `dsh-llm` dan `dsh-session` yang juga hanya
+dipakai entry CLI. `test/unit/package-deps.spec.ts` mengunci aturan itu: setiap
+import runtime harus terdeklarasi di `dependencies` atau `peerDependencies`,
+dan test itu gagal di manifest lama dengan pesan `runtime imports missing from
+dependencies and peerDependencies: @deepseek-ai/dsh-system-prompt`.
 
 **Diverifikasi setelah restart host (2026-10-21):** host web yang berjalan
 waktu itu adalah PID 267169, start 01:08:27. Artifact `lib/` terakhir dibangun

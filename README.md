@@ -26,7 +26,7 @@ Status di host ini, diverifikasi 2026-10-20:
 | Hook | 5 (`agent/pre-step`, `tools/pre-execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget` |
-| Test | 276 di 95 suite, semuanya lulus |
+| Test | 282 di 96 suite, semuanya lulus |
 | Lisensi | MIT |
 
 Cakupan 100 spec di `sumber100specs.md`:
@@ -200,9 +200,9 @@ pnpm build       # emit lib/, termasuk lib/cli.js
 ```
 
 Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
-0. Dengan visualizer, budget advisor, CLI, episode per-session, serta spec 4
-dan 55, validasi `--format` di CLI, serta advisor dengan ledger terisi: **279 test di
-95 suite lulus**.
+0. Dengan visualizer, budget advisor, CLI, episode per-session, spec 4 dan 55,
+validasi `--format` di CLI, advisor dengan ledger terisi, dan kontrak peer
+dependensi: **282 test di 96 suite lulus**.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
@@ -247,10 +247,12 @@ service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
   (schema `Config`), dan `node:crypto`. Import `dsh-llm`, `dsh-agent`, dan
   `dsh-session` di sana hanya untuk tipe. Entry CLI (`src/cli.ts`) berbeda:
   ia meng-import `dsh-tools`, `dsh-llm`, `dsh-session`, dan
-  `dsh-system-prompt` sebagai runtime dependency. `dsh-system-prompt` tidak
-  ada di `peerDependencies` paket ini, jadi host harus menyediakannya.
-  `schemastery` resolve lewat dependensi `dsh-tools` host dan tidak
-  dideklarasikan langsung di `peerDependencies` paket ini.
+  `dsh-system-prompt` sebagai runtime dependency. Semuanya dideklarasikan di
+  `peerDependencies` paket ini; `dsh-llm`, `dsh-session`, dan
+  `dsh-system-prompt` ditandai optional karena hanya dibutuhkan oleh entry
+  CLI, bukan oleh jalur plugin. `schemastery` resolve lewat dependensi
+  `dsh-tools` host dan tidak dideklarasikan langsung di `peerDependencies`
+  paket ini.
 
 ## Dokumen
 
