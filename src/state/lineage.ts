@@ -129,4 +129,9 @@ export class PassLineage {
     }
     return out
   }
+
+  /** All passes in creation order. */
+  all(): readonly ReasoningPass[] {
+    return [...this.passes.values()]
+  }
 }

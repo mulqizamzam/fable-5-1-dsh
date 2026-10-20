@@ -17,6 +17,8 @@ import { reasoningCoreTools } from './reasoning-core.ts'
 import { reasoningFlowTools } from './reasoning-flow.ts'
 import { reasoningOpsTools } from './reasoning-ops.ts'
 import { governanceTools } from './governance.ts'
+import { visualizeTools } from './visualize.ts'
+import { budgetAdvisorTools } from './budget-advisor.ts'
 
 const GROUPS: ReadonlyArray<() => ToolSpec[]> = [
   contextTools,
@@ -29,6 +31,8 @@ const GROUPS: ReadonlyArray<() => ToolSpec[]> = [
   reasoningFlowTools,
   reasoningOpsTools,
   governanceTools,
+  visualizeTools,
+  budgetAdvisorTools,
 ]
 
 export function allToolSpecs(): ToolSpec[] {
