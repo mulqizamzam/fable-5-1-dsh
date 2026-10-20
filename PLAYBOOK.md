@@ -253,10 +253,16 @@ Aktivasi harus dibuktikan, bukan diasumsikan: kalau service wajib (`tools`,
    session untuk event lifecycle. Call yang tidak diatribusikan host masuk ke
    bucket `default` tersendiri, yang tidak di-reset turn session mana pun.
 
-2. **Jalur LLM streaming penuh belum pernah dieksekusi end-to-end** di
-   environment build (API key profile scratch invalid — blocker environment,
-   bukan perilaku bundle). Semantik hook-covered e2e suite yang memanggil
-   dispatcher asli.
+2. **Host men-serialisasi tool call yang digerakkan model.** Terverifikasi di
+   commit dsh yang dipin: dua tool call dalam satu pesan assistant tetap
+   didispatch berurutan (`tool/call`, `tool/result`, `tool/call`,
+   `tool/result` dalam satu step). **Cap bandwidth (55) karena itu tidak
+   pernah aktif untuk call yang dibuat model** — ia mengikat dispatch
+   programatik, tempat tool komposit memancarkan call paralel.
+   `fable51 inspect` melaporkan `peak: 1` di run yang digerakkan model.
+   Jalur agent-loop penuh sendiri **sudah** dieksekusi end-to-end pada
+   2026-10-20 lewat `dsh --profile fable-test headless`; blokir API key yang
+   tercatat di versi PLAYBOOK sebelumnya sudah tidak berlaku.
 
 3. **Tidak ada CI dan tidak ada lockfile.** Yang dijalankan host = apa pun yang
    ter-build lokal.
@@ -306,7 +312,21 @@ hanya di session-nya, gate lolos tidak masuk jejak, call paralel di atas
 `maxConcurrentPasses` **antre** (bukan ditolak) dan semuanya tetap jalan,
 slot dilepas saat call selesai, dan call nested tidak pernah menunggu slot.
 
+**Diverifikasi lewat agent loop sungguhan (2026-10-20), `dsh --profile
+fable-test headless`:** model memanggil `fable51_chain-vs-tree` dan menerima
+envelope asli `{ok:true, spec:"35", output:{topology:"tree", branchFactor:2},
+verdict:"verified", unverified:[], rerun:false, gates:[]}` dari log sesi
+(seq 20 `tool/call`, seq 21 `tool/result`). Run kedua memanggil
+`fable51_verification-gates` dengan hasil FAIL lalu `fable51_inspect`, dan
+`progress` berisi tepat satu `stage-transition` ("turn 1 started") dan satu
+`gate-fail` ("1 verification gate(s) failed") — dua hal yang memang harus
+dinarasi, dan tidak ada baris per-step. Run ketiga memaksa dua tool call
+dalam satu pesan assistant; log sesi menunjukkan keduanya didispatch
+berurutan, jadi cap bandwidth tidak aktif pada jalur model.
+
 **Belum diverifikasi:** perilaku setelah restart host belum diuji — klaim di §0
 masih menunggu konfirmasi restart; `fable51 advise-budget` belum diuji dengan
-cost ledger terisi (hanya path ledger kosong yang tercover test); tool selain
-yang disebut di atas tidak dipanggil langsung.
+cost ledger terisi (hanya path ledger kosong yang tercover test); jalur antrean
+bandwidth belum pernah terpakai oleh host nyata karena host men-serialisasi
+tool call (lihat §7 butir 2); tool selain yang disebut di atas tidak
+dipanggil langsung.

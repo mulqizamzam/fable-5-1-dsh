@@ -201,6 +201,10 @@ own permissions.
   Each run's episode is bounded too: at most 64 live sessions, 200 progress
   records per run.
 - **Encoding hygiene:** LF, UTF-8 without BOM, final newline on every text file.
+- **Agent-loop verified.** Beyond the suites, the bundle was run inside a real
+  headless session: a model called `fable51_chain-vs-tree` and received the
+  real envelope, and specs 4 and 55 were read back through `fable51_inspect`
+  in the same run. The evidence is the session log, not a claim.
 
 ## Testing
 
@@ -236,10 +240,21 @@ and drive real event dispatches. `pnpm typecheck` covers `test/**` as well as
 - **No CI and no lockfile.** `lib/` is gitignored, so the artifact a host runs is
   whatever was built locally. The same applies to the CLI: `bin/fable51.js` is a
   shim onto `lib/cli.js`, so it needs a `pnpm build` first.
-- **The full agent-loop path was not executed in the authoring environment.**
-  The scratch profile's API key was invalid, an environment blocker rather than
-  bundle behavior. Hook semantics are covered by the suites driving the real
-  event dispatchers.
+- **The agent-loop path is now executed end-to-end.** Earlier drafts of this
+  README recorded that the full path had never run, because the scratch
+  profile's API key was invalid. That blocker is gone: on 2026-10-20
+  `dsh --profile fable-test headless` ran a real task, the model called
+  `fable51_chain-vs-tree`, and the bundle returned the real envelope
+  `{ok:true, spec:"35", output:{topology:"tree", branchFactor:2},
+  verdict:"verified"}` — confirmed in the session log, not inferred.
+  Specs 4 and 55 were verified through the same path.
+- **The host serializes model-driven tool calls.** Verified on the pinned dsh
+  commit: a model that emits two tool calls in one assistant message has them
+  dispatched one after the other — the session log shows `tool/call`,
+  `tool/result`, `tool/call`, `tool/result` inside a single step. The
+  bandwidth cap (55) therefore never engages for calls a model makes; it binds
+  programmatic dispatch, where a composite tool fans out concurrent calls.
+  `fable51 inspect` reports `peak: 1` on a model-driven run for this reason.
 - **Spec definitions 21 and 23 to 26** are operator-authored additions.
   `PRD_REVISI.md` section 11 records the cross-check against
   `sumber100specs.md`: 100 ids and names match. The "Kills" column in the older

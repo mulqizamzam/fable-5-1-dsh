@@ -455,9 +455,17 @@ Suite test terdiri dari 15 berkas unit, 1 integration, dan 1 e2e.
    `sandbox-boundaries` atau `human-in-the-loop` sebagai satu-satunya kontrol.
    Keduanya hanya berjalan bila model memanggil tool, dan yang pertama hanya
    membandingkan string path.
-3. **Jalur LLM streaming penuh belum dijalankan end-to-end.** API key profile
-   scratch tidak valid saat penulisan awal. Semantik hook ditutup oleh suite e2e
-   yang memanggil dispatcher asli, bukan oleh satu sesi model nyata.
+3. **Host men-serialisasi tool call yang digerakkan model.** Terverifikasi di
+   commit dsh yang dipin: model yang mengirim dua tool call dalam satu pesan
+   assistant tetap didispatch berurutan — log sesi menunjukkan `tool/call`,
+   `tool/result`, `tool/call`, `tool/result` di dalam satu step. Artinya cap
+   bandwidth (55) tidak pernah aktif untuk call yang dibuat model; ia mengikat
+   dispatch programatik, tempat tool komposit memancarkan call paralel.
+   `fable51 inspect` melaporkan `peak: 1` pada run yang digerakkan model
+   karena itu. Jalur agent-loop penuh sendiri sudah dijalankan end-to-end
+   pada 2026-10-20 lewat `dsh --profile fable-test headless`: envelope asli
+   `fable51_chain-vs-tree` diterima, dan spec 4 serta 55 terverifikasi lewat
+   jalur yang sama.
 4. **Tidak ada CI dan tidak ada lockfile.** Artefak yang dijalankan host adalah
    hasil build lokal. `lib/` tidak masuk git.
 5. **Registry tidak memvalidasi argumen input.** Kesalahan schema terdeteksi
