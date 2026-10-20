@@ -439,7 +439,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
 | Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
-| Suite test | `pnpm test` | 276 test, 95 suite, 276 lulus, 0 gagal | lulus |
+| Suite test | `pnpm test` | 278 test, 95 suite, 278 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |
@@ -449,6 +449,8 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Jalur agent loop | `dsh --profile fable-test headless "<task>"` | envelope asli diterima | lulus |
 | CLI | `node bin/fable51.js inspect` dan `advise-budget` | ASCII dan JSON | lulus |
 | Host pasca-restart | `ps` untuk waktu start host, impor `lib/tools/index.js` | 92 tool, host start 53 menit setelah build | lulus |
+| Advisor dengan ledger terisi | `test/unit/budget-advisor.spec.ts` + sesi headless | 200.000 token x 5.0 = 1.000.000, sampleSize 4 di host | lulus |
+| Antrean bandwidth tak terjangkau host | log sesi + grep call site host | peak 1, queued 0; satu call site non-test | Terkarakterisasi |
 
 Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
 
@@ -466,14 +468,18 @@ Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
    `sandbox-boundaries` atau `human-in-the-loop` sebagai satu-satunya kontrol.
    Keduanya hanya berjalan bila model memanggil tool, dan yang pertama hanya
    membandingkan string path.
-3. **Host men-serialisasi tool call yang digerakkan model.** Terverifikasi di
-   commit dsh yang dipin: model yang mengirim dua tool call dalam satu pesan
-   assistant tetap didispatch berurutan. Log sesi menunjukkan `tool/call`,
-   `tool/result`, `tool/call`, `tool/result` di dalam satu step. Artinya cap
-   bandwidth (55) tidak pernah aktif untuk call yang dibuat model; ia mengikat
-   dispatch programatik, tempat tool komposit memancarkan call paralel.
-   `fable51 inspect` melaporkan `peak: 1` pada run yang digerakkan model
-   karena itu. Jalur agent-loop penuh sendiri sudah dijalankan end-to-end
+3. **Host men-serialisasi tool call, jadi cap bandwidth tak terjangkau di
+   dsh 0.2.0-rc.2.** Tiga bukti independen. (a) Log sesi: model yang
+   mengirim dua tool call dalam satu pesan assistant tetap didispatch
+   berurutan, `tool/call` lalu `tool/result` lalu `tool/call` lalu
+   `tool/result`, semuanya di dalam satu step. (b) Host punya tepat satu call
+   site `ctx.tools.execute` di luar test, `sdk/server/src/server.ts:230`, dan
+   itu satu `await`. (c) Bundle ini sendiri tidak punya tool komposit yang
+   memancarkan call. Pada satu sesi headless dengan lima panggilan tool,
+   `fable51 inspect` melaporkan `inFlight` 1, `peak` 1, `queued` 0, dan
+   `saturated` false. Cap bandwidth (55) mengikat dispatch programatik dan
+   akan mengikat jalur model pada versi host yang memarshal call secara
+   paralel; jalur itu belum ada di sini. Jalur agent-loop penuh sendiri sudah dijalankan end-to-end
    pada 2026-10-20 lewat `dsh --profile fable-test headless`: envelope asli
    `fable51_chain-vs-tree` diterima, dan spec 4 serta 55 terverifikasi lewat
    jalur yang sama.
@@ -518,3 +524,4 @@ Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
 |---|---|---|
 | 1 | 2026-10-20 | Ditulis ulang sebagai PRD as-built dari commit `3b701d6`: angka terverifikasi, pembagian cakupan 90/8/2, kontrak config dan envelope, bukti penerimaan, serta batas yang diketahui |
 | 2 | 2026-10-20 | Cakupan spec 100/100 (spec 4 dan 55 diisi), 92 tool, 5 hook, episode per session, CLI `fable51 inspect` dan `advise-budget`, jalur agent loop terverifikasi end-to-end, panduan operator dipindah ke `HOWTOUSE.md` |
+| 3 | 2026-10-21 | Advisor diverifikasi dengan cost ledger terisi, dan jalur antrean bandwidth dikarakterisasi sebagai tidak terjangkau host dsh 0.2.0-rc.2 |

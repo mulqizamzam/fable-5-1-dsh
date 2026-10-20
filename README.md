@@ -201,7 +201,8 @@ pnpm build       # emit lib/, termasuk lib/cli.js
 
 Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
 0. Dengan visualizer, budget advisor, CLI, episode per-session, serta spec 4
-dan 55, serta validasi `--format` di CLI: **276 test di 95 suite lulus**.
+dan 55, validasi `--format` di CLI, serta advisor dengan ledger terisi: **278 test di
+95 suite lulus**.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
@@ -222,14 +223,15 @@ service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
   dan eksekusi tool, `GenerateOptions.sessionId` untuk stream hook, dan objek
   session untuk event lifecycle. Call yang tidak diatribusikan host masuk ke
   bucket `default` tersendiri, yang tidak di-reset turn session mana pun.
-- **Host men-serialisasi tool call yang digerakkan model.** Terverifikasi di
-  commit dsh yang dipin: model yang mengirim dua tool call dalam satu pesan
-  assistant tetap didispatch satu per satu. Log sesi menunjukkan `tool/call`,
-  `tool/result`, `tool/call`, `tool/result` di dalam satu step. Cap bandwidth
-  (55) karena itu tidak pernah aktif untuk call yang dibuat model, hanya untuk
-  dispatch programatik, tempat tool komposit memancarkan call paralel.
-  `fable51 inspect` melaporkan `peak: 1` di run yang digerakkan model karena
-  itu.
+- **Host men-serialisasi tool call, jadi cap bandwidth tak terjangkau di
+  dsh 0.2.0-rc.2.** Tiga bukti independen: log sesi menunjukkan urutan
+  `tool/call`, `tool/result`, `tool/call`, `tool/result` di dalam satu step
+  walau model mengirim dua call sekaligus; host punya tepat satu call site
+  `ctx.tools.execute` di luar test, dan itu satu `await`; dan bundle ini tidak
+  punya tool komposit yang memancarkan call. Pada satu sesi headless dengan
+  lima panggilan tool, `fable51 inspect` melaporkan `inFlight` 1, `peak` 1,
+  `queued` 0. Cap bandwidth (55) mengikat dispatch programatik, dan akan
+  mengikat jalur model pada versi host yang memarshal call secara paralel.
 - **Tidak ada CI dan tidak ada lockfile.** `lib/` ada di `.gitignore`, jadi
   artifact yang dijalankan host adalah apa pun yang ter-build lokal. Berlaku
   juga untuk CLI: `bin/fable51.js` adalah shim ke `lib/cli.js`, jadi butuh

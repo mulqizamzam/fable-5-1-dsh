@@ -342,8 +342,26 @@ agent dan keduanya menjawab bentuk yang benar: `sandbox-boundaries` melempar
 menjadi `ok:false` dengan pesan sandbox escape, dan `verification-gates`
 membalas `verdict:"unverified"` untuk gate yang gagal.
 
-**Belum diverifikasi:** `fable51 advise-budget` belum diuji dengan cost ledger
-terisi, hanya path ledger kosong yang tercover test; jalur antrean bandwidth
-belum pernah terpakai oleh host nyata karena host men-serialisasi tool call
-(lihat §8 butir 2); tool selain yang disebut di atas tidak dipanggil
+**Diverifikasi dengan cost ledger terisi (2026-10-21):** satu sesi headless
+memanggil `fable51_chain-vs-tree` dua kali, `fable51_verification-gates` dengan
+hasil FAIL, lalu `fable51_inspect` dan `fable51_budget-advisor`. Advisor
+membaca ledger sungguhan: `sampleSize` 4, tiga stage dengan kuantil nyata
+(`tool:fable51_inspect` p90 415 token, `tool:fable51_verification-gates` p90 82,
+`tool:fable51_chain-vs-tree` p90 44 dengan count 2), dan stage dominan disebut
+di rationale. `test/unit/budget-advisor.spec.ts` mengunci perhitungannya:
+sepuluh booking 200.000 token menghasilkan `stageTokenBudget` 1.000.000 untuk
+kelas `open` (200.000 dikali 5.0), bukan default ledger kosong.
+
+**Diverifikasi bahwa host tidak pernah menyalakan call konkuren (2026-10-21):**
+pada sesi yang sama, `bandwidth` melaporkan `inFlight` 1, `peak` 1, `queued` 0
+selama lima panggilan tool. Tiga bukti independen: log sesi menNONJUKKAN
+urutan call lalu result di dalam satu step; host punya tepat satu call site
+`ctx.tools.execute` di luar test (`sdk/server/src/server.ts:230`, satu
+`await`); dan bundle ini sendiri tidak punya tool komposit yang memancarkan
+call. Jadi jalur antrean tidak bisa dipicu host pada dsh 0.2.0-rc.2. Yang
+membuktikan antrean bekerja adalah
+`test/unit/progress-bandwidth.spec.ts`, yang memanggil tiga tool konkuren
+dengan cap dua dan memastikan satu diantre, bukan ditolak.
+
+**Belum diverifikasi:** tool selain yang disebut di atas tidak dipanggil
 langsung.
