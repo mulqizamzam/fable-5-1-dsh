@@ -238,13 +238,18 @@ Aktivasi harus dibuktikan, bukan diasumsikan: kalau service wajib (`tools`,
 
 ## 7. Batas yang harus kamu tahu
 
-1. **State per-host, bukan per-session.** Satu `ctx.fable51` melayani semua
-   session di host: worklog, cost ledger, reason cache, snapshot store, lineage,
-   dan counter skalar berbagi. `turn/start` dari satu session menghapus stage
-   token budget yang masih ditagih session lain; budget fork/merge per-stage
-   reset untuk semua orang sekaligus. Kalau beberapa sesi jalan paralel, angka
-   ledger bukan angka per-session. Isolasi ini butuh identitas session di
-  plumbed ke `ToolRunContext`; belum dikerjakan di bundle ini.
+1. **Audit trail per-host, budget per-session.** Satu `ctx.fable51` melayani
+   semua session di host: worklog, cost ledger, reason cache, snapshot store,
+   dan lineage berbagi — audit jangka panjang memang di level host, dan
+   `fable51 inspect` menampilkan gambaran itu. Yang menegakkan run — stage
+   token budget, jatah fork/merge, escalation ladder, replan count, effort
+   tier, convergence window — di-key per session. `turn/start` hanya
+   me-reset budget session-nya sendiri, jadi satu session tidak bisa
+   menghapus budget session lain.
+   Identitas session datang dari host: `Agent.session.id` untuk pre-step hook
+   dan eksekusi tool, `GenerateOptions.sessionId` untuk stream hook, dan objek
+   session untuk event lifecycle. Call yang tidak diatribusikan host masuk ke
+   bucket `default` tersendiri, yang tidak di-reset turn session mana pun.
 
 2. **Jalur LLM streaming penuh belum pernah dieksekusi end-to-end** di
    environment build (API key profile scratch invalid — blocker environment,
@@ -279,10 +284,18 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan 256 test di 92 suite dan semuanya lulus (unit + integration + e2e);
+menjalankan 261 test di 93 suite dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
+
+**Diverifikasi saat menambah isolasi per-session:** reproduksi bug
+cross-session (session A `turn/start` menghapus stage budget session B)
+dijalankan live sebelum perbaikan dan menunjukkan angka session B terhapus;
+setelah perbaikan `test/unit/session-isolation.spec.ts` mengunci lima
+perilaku: reset satu session tidak menyentuh session lain, tiap session punya
+budget dan jatah fork sendiri, dan bucket tanpa atribusi session bukan
+wildcard.
 
 **Belum diverifikasi:** perilaku setelah restart host belum diuji — klaim di §0
 masih menunggu konfirmasi restart; `fable51 advise-budget` belum diuji dengan

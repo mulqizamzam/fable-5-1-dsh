@@ -87,9 +87,15 @@ fable51 advise-budget search --format json
 fable51 advise-budget open --history-window 200 --min-samples 5
 ```
 
-`fable51 inspect` is read-only: it reads the policy registry, pass lineage, cost
-ledger, reason cache, snapshot index, and worklog of a booted bundle. It mutates
-nothing.
+`fable51 inspect` is read-only. It shows two scopes side by side: the
+**run scope** (stage budget, effort tier, fork window) belongs to one session,
+and the **shared scope** (policy registry, cost ledger, cache, snapshots,
+lineage) belongs to the host.
+
+The CLI boots its own bundle, so it shows the shape of a bundle, not the live
+state of a host that is already running. To see a running host's state, call
+`fable51_inspect` from inside the agent — the tool then reports that host's
+session and its shared trail.
 
 `fable51 advise-budget` derives its recommendation from the cost ledger
 (`spec 11`, `spec 60`): per-stage p50/p90 token and latency quantiles, scaled by
@@ -201,7 +207,8 @@ pnpm build       # emit lib/ (including lib/cli.js, the CLI entry point)
 ```
 
 At commit `3b701d6`: 227 tests in 89 suites pass, and `pnpm typecheck` exits 0.
-With the visualizer, budget advisor, and CLI added: 256 tests in 92 suites pass.
+With the visualizer, budget advisor, CLI, and per-session episodes: 261 tests in
+93 suites pass.
 The integration and e2e suites load the bundle into a real Cordis host with the
 real dsh services (`dsh-tools`, `dsh-llm`, `dsh-session`, `dsh-system-prompt`)
 and drive real event dispatches. `pnpm typecheck` covers `test/**` as well as
@@ -209,12 +216,19 @@ and drive real event dispatches. `pnpm typecheck` covers `test/**` as well as
 
 ## Known limits
 
-- **State is per host, not per session.** One `ctx.fable51` serves every session
-  in the host: worklog, ledger, cache, snapshots, lineage, and scalar counters
-  are shared. A `turn/start` from one session clears the stage token budget
-  another session was charging against, and per-stage fork and merge budgets
-  reset for everyone at once. Isolating this needs session identity plumbed
-  through `ToolRunContext` into the tools and hooks; it is not done here.
+- **The audit trail is per host, the budgets are per session.** One
+  `ctx.fable51` serves every session in the host, so the worklog, gate log,
+  cost ledger, reason cache, snapshot index, and pass lineage are shared: a
+  long run is audited at host level, and `fable51 inspect` shows that shared
+  picture. The counters that enforce a run — stage token budget, fork and
+  merge allowance, escalation ladder, replan count, effort tier, convergence
+  window — are keyed by session. A `turn/start` resets only its own session's
+  budget, so one session can no longer clear another's.
+  The session identity comes from the host: `Agent.session.id` for the
+  pre-step hook and the tool execution, `GenerateOptions.sessionId` for the
+  stream hook, and the session object for the lifecycle events. A call the
+  host attributes to no session lands in a `default` bucket of its own, which
+  no session's turn resets.
 - **No CI and no lockfile.** `lib/` is gitignored, so the artifact a host runs is
   whatever was built locally. The same applies to the CLI: `bin/fable51.js` is a
   shim onto `lib/cli.js`, so it needs a `pnpm build` first.
