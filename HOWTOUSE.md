@@ -22,24 +22,40 @@ Status di host ini, diverifikasi 2026-10-20:
 `pnpm build` tidak mengubah host yang sedang jalan. Setelah mengubah kode,
 restart DSH.
 
-Cek apakah host yang jalan memang sudah memakai artifact terbaru. Panggil dua
-tool ini dari dalam agent:
+Cek apakah host yang jalan memang sudah memakai artifact terbaru. Panggil tiga
+tool ini dari dalam agent.
 
 ```
 fable51_sandbox-boundaries { operation: "write", path: "…/README.md" }
 ```
 
-Allow-list `write` yang kosong berarti hasilnya `allowed:false, escape:true`.
-Itu tanda artifact terbaru sudah termuat, karena artifact lama melempar
-daripada membalas.
+Allow-list `write` yang kosong berarti path itu di luar daftar, jadi tool
+**melempar** dan envelope-nya jadi `ok:false` dengan pesan
+`sandbox escape: write on … is outside the declared allow-list`. Artifact lama
+membalas `allowed:false, escape:true` tanpa melempar, jadi bentuk `ok:true`
+dengan `escape:true` artinya host masih jalan di artifact lama.
 
 ```
 fable51_verification-gates { check: "demo", cmd: "true", expected: "PASS", actual: "FAIL" }
 ```
 
-Hasil `ok:true, verdict:"unverified"` juga tanda artifact terbaru. Artifact
-lama membalas `verdict:"verified"` untuk gate yang gagal, dan itu kebocoran
-yang harus diperbaiki.
+Hasil `ok:true` dengan `verdict:"unverified"` juga tanda artifact terbaru.
+Artifact lama membalas `verdict:"verified"` untuk gate yang gagal, dan itu
+kebocoran yang harus diperbaiki.
+
+```
+fable51_inspect { format: "json" }
+```
+
+Dua tanda paling tegas bahwa host sudah memuat build terbaru:
+
+- `output.session` ada, dan `output.bandwidth` ada. Keduanya field yang
+  hanya ada di build yang punya isolasi per-session dan spec 55.
+- `output.policies` dan seterusnya boleh kosong, tapi `output.session` tidak
+  boleh kosong.
+
+Kalau `fable51_inspect` tidak dikenal sama sekali, host masih memuat artifact
+sebelum visualizer dan budget advisor.
 
 ---
 
@@ -316,9 +332,18 @@ exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
 or ascii`.
 
-**Belum diverifikasi:** perilaku setelah restart host belum diuji, klaim di §1
-masih menunggu konfirmasi restart; `fable51 advise-budget` belum diuji dengan
-cost ledger terisi, hanya path ledger kosong yang tercover test; jalur antrean
-bandwidth belum pernah terpakai oleh host nyata karena host men-serialisasi
-tool call (lihat §8 butir 2); tool selain yang disebut di atas tidak
-dipanggil langsung.
+**Diverifikasi setelah restart host (2026-10-21):** host web yang berjalan
+waktu itu adalah PID 267169, start 01:08:27. Artifact `lib/` terakhir dibangun
+00:15:26, jadi 53 menit lebih tua dari host, dan symlink
+`$DSH_HOME/profiles/web/node_modules/fable-5-1-dsh` menunjuk repo yang sama.
+Impor langsung `lib/tools/index.js` menghitung 92 tool terdaftar, termasuk
+`inspect` dan `budget-advisor`. Dua call diagnostik §1 dijalankan dari dalam
+agent dan keduanya menjawab bentuk yang benar: `sandbox-boundaries` melempar
+menjadi `ok:false` dengan pesan sandbox escape, dan `verification-gates`
+membalas `verdict:"unverified"` untuk gate yang gagal.
+
+**Belum diverifikasi:** `fable51 advise-budget` belum diuji dengan cost ledger
+terisi, hanya path ledger kosong yang tercover test; jalur antrean bandwidth
+belum pernah terpakai oleh host nyata karena host men-serialisasi tool call
+(lihat §8 butir 2); tool selain yang disebut di atas tidak dipanggil
+langsung.

@@ -448,6 +448,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Boot profile dsh | `dsh --profile fable-test --dump-config` | 92 tool terdaftar | lulus |
 | Jalur agent loop | `dsh --profile fable-test headless "<task>"` | envelope asli diterima | lulus |
 | CLI | `node bin/fable51.js inspect` dan `advise-budget` | ASCII dan JSON | lulus |
+| Host pasca-restart | `ps` untuk waktu start host, impor `lib/tools/index.js` | 92 tool, host start 53 menit setelah build | lulus |
 
 Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
 
