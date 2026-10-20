@@ -57,7 +57,7 @@ export function verificationTools(): ToolSpec[] {
           at: { type: 'number' },
         },
       },
-      execute(args, { service }): GateResult {
+      execute(args, { service, sessionKey }): GateResult {
         const record = asRecord(args)
         // Fail-loud: a gate that can fail cannot be recorded from missing
         // fields — undefined === undefined must never read as a pass (spec 5).
@@ -65,7 +65,7 @@ export function verificationTools(): ToolSpec[] {
         const cmd = requireNonEmptyString(record.cmd, 'cmd')
         const expected = requireNonEmptyString(record.expected, 'expected')
         const actual = requireNonEmptyString(record.actual, 'actual')
-        return service.recordGate({ gate: check, cmd, expected, actual, pass: actual === expected, at: Date.now() })
+        return service.recordGate({ gate: check, cmd, expected, actual, pass: actual === expected, at: Date.now() }, sessionKey)
       },
     },
     {

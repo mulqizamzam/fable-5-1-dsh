@@ -17,6 +17,11 @@ interface ResultLike {
 export function wireToolsResult(ctx: Context): void {
   ctx.on('tools/result', (exec: { name?: string; arguments?: unknown }, result: Readonly<ResultLike>) => {
     const svc = ctx.fable51 as Fable51Policy
+    // spec 55: the parallel-pass slot the call held is free again. The
+    // registry reports a result for every dispatched call — including one
+    // another gate refused — so the slot is released exactly once, by
+    // whoever held it.
+    svc.releaseHeldSlot(exec)
     const text = (result.content ?? [])
       .filter((block) => block.type === 'text' && typeof block.text === 'string')
       .map((block) => block.text as string)

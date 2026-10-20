@@ -73,7 +73,7 @@ export function visualizeTools(): ToolSpec[] {
       },
       outputSchema: {
         type: 'object',
-        required: ['session', 'policies', 'lineage', 'costs', 'cache', 'snapshots', 'config'],
+        required: ['session', 'policies', 'lineage', 'costs', 'cache', 'snapshots', 'config', 'progress', 'bandwidth'],
         properties: {
           session: { type: 'string', description: 'the session the run-scoped numbers below belong to' },
           policies: {
@@ -162,6 +162,29 @@ export function visualizeTools(): ToolSpec[] {
           },
           worklog: { type: 'array' },
           gateLog: { type: 'array' },
+          progress: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['kind', 'detail', 'at'],
+              properties: {
+                kind: { type: 'string', enum: ['stage-transition', 'gate-fail'] },
+                detail: { type: 'string' },
+                at: { type: 'number' },
+              },
+            },
+          },
+          bandwidth: {
+            type: 'object',
+            required: ['inFlight', 'cap', 'queued', 'peak', 'saturated'],
+            properties: {
+              inFlight: { type: 'integer' },
+              cap: { type: 'integer' },
+              queued: { type: 'integer' },
+              peak: { type: 'integer' },
+              saturated: { type: 'boolean' },
+            },
+          },
         },
       },
       execute(args, { service, sessionKey }) {
@@ -278,6 +301,10 @@ export function visualizeTools(): ToolSpec[] {
           config,
           worklog: includeWorklog ? service.worklog : [],
           gateLog: includeGateLog ? service.gateLog : [],
+          // spec 4: the narrated progress of this run.
+          progress: [...service.progress(sessionKey)],
+          // spec 55: the parallel-pass state of this run.
+          bandwidth: service.bandwidth(sessionKey),
         }
 
         if (format === 'json') {
@@ -322,6 +349,20 @@ export function visualizeTools(): ToolSpec[] {
 
         lines.push('--- Cache ---')
         lines.push(`  Size: ${cacheSize}, Hits: ${cacheHits}, Misses: ${cacheMisses}, Hit rate: ${(hitRate * 100).toFixed(1)}%`)
+        lines.push('')
+
+        lines.push('--- Progress ---')
+        if (output.progress.length === 0) {
+          lines.push('  (none)')
+        } else {
+          for (const record of output.progress) {
+            lines.push(`  ${record.kind}: ${record.detail}`)
+          }
+        }
+        lines.push('')
+
+        lines.push('--- Bandwidth ---')
+        lines.push(`  Parallel passes: ${output.bandwidth.inFlight}/${output.bandwidth.cap}, queued ${output.bandwidth.queued}, peak ${output.bandwidth.peak}${output.bandwidth.saturated ? ' (saturated)' : ''}`)
         lines.push('')
 
         lines.push('--- Snapshots ---')

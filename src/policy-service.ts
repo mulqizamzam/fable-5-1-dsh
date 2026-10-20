@@ -15,13 +15,14 @@ import type { Fable51Config } from './config/schema.ts'
 import { wireAgentPreStep } from './hooks/agent-pre-step.ts'
 import { wireLlmStream } from './hooks/llm-stream.ts'
 import { wireSessionEvent } from './hooks/session-event.ts'
+import { wireToolsPreExecute } from './hooks/tools-pre-execute.ts'
 import { wireToolsResult } from './hooks/tools-result.ts'
 import { registerTools } from './tools/index.ts'
 import { PassLineage } from './state/lineage.ts'
 import { PolicyRegistry } from './state/registry.ts'
 import { ReasonCache } from './state/cache.ts'
 import { SnapshotStore, type Snapshot } from './state/snapshots.ts'
-import { EpisodeStore, type EpisodeState, type EffortTier, type ReasoningMode } from './state/episode.ts'
+import { EpisodeStore, PROGRESS_CAP, type EpisodeState, type EffortTier, type ProgressRecord, type ReasoningMode } from './state/episode.ts'
 import type { GateResult } from './types/gate.ts'
 import type { PassScore, PassVerdict, ReasoningPass } from './types/pass.ts'
 
@@ -178,6 +179,7 @@ export class Fable51Policy extends Service {
     // PRD §3: hooks and tools wire at service construction; cordis disposes
     // listeners and tool registrations with the owning fiber automatically.
     wireAgentPreStep(ctx)
+    wireToolsPreExecute(ctx)
     wireToolsResult(ctx)
     wireLlmStream(ctx)
     wireSessionEvent(ctx)
@@ -191,6 +193,137 @@ export class Fable51Policy extends Service {
    */
   episode(key: string): EpisodeState {
     return this.episodes.get(key)
+  }
+
+  // ---- spec 4: progress reporting ----
+  /**
+   * Record one progress note (spec 4).
+   *
+   * The bundle narrates two things and only two: the run moved to another
+   * unit of work, and a verification gate failed. A line per step is the
+   * narration spam this record replaces.
+   */
+  recordProgress(key: string, kind: ProgressRecord['kind'], detail: string): ProgressRecord {
+    const episode = this.episodes.get(key)
+    const record: ProgressRecord = { kind, detail, at: Date.now() }
+    pushCapped(episode.progress, record, PROGRESS_CAP)
+    return record
+  }
+
+  /**
+   * Mark this run's gate failures as narrated (spec 4).
+   *
+   * Separate from recordProgress: a stage transition must not silently
+   * swallow a gate failure that has not been told yet.
+   */
+  markGatesReported(key: string): void {
+    const episode = this.episodes.get(key)
+    episode.reportedFailingGates = episode.failingGates
+  }
+
+  /** The progress records of one run, oldest first. */
+  progress(key: string): readonly ProgressRecord[] {
+    return this.episodes.get(key).progress
+  }
+
+  // ---- spec 55: reasoning bandwidth ----
+  /**
+   * Take a parallel-pass slot (spec 55).
+   *
+   * Excess is queued, not denied: the caller waits for a slot instead of
+   * being turned away, so a burst of parallel work is throttled rather than
+   * refused.
+   */
+  async acquireSlot(key: string, signal?: AbortSignal): Promise<boolean> {
+    const episode = this.episodes.get(key)
+    const cap = this.config.reasoning.maxConcurrentPasses
+    if (episode.inFlight < cap) {
+      episode.inFlight += 1
+      if (episode.inFlight > episode.peakInFlight) episode.peakInFlight = episode.inFlight
+      return true
+    }
+    // Over the cap: queue behind the passes already running.
+    episode.queuedTotal += 1
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      const grant = (): void => {
+        if (settled) return
+        settled = true
+        resolve(true)
+      }
+      const abandon = (): void => {
+        if (settled) return
+        settled = true
+        episode.queuedTotal -= 1
+        resolve(false)
+      }
+      episode.waiters.push(grant)
+      if (signal === undefined) return
+      // An aborted caller must not hold a queue place forever.
+      if (signal.aborted) {
+        const index = episode.waiters.indexOf(grant)
+        if (index >= 0) episode.waiters.splice(index, 1)
+        abandon()
+        return
+      }
+      signal.addEventListener('abort', () => {
+        const index = episode.waiters.indexOf(grant)
+        if (index >= 0) episode.waiters.splice(index, 1)
+        abandon()
+      }, { once: true })
+    })
+  }
+
+  /**
+   * Give a parallel-pass slot back (spec 55).
+   *
+   * A queued caller takes the freed slot directly, so the running count never
+   * dips below the cap while somebody is waiting for it.
+   */
+  releaseSlot(key: string): void {
+    const episode = this.episodes.get(key)
+    const next = episode.waiters.shift()
+    if (next !== undefined) {
+      next()
+      return
+    }
+    episode.inFlight = Math.max(0, episode.inFlight - 1)
+  }
+
+  /** The parallel-pass state of one run (spec 55). */
+  bandwidth(key: string): { inFlight: number; cap: number; queued: number; peak: number; saturated: boolean } {
+    const episode = this.episodes.get(key)
+    const cap = this.config.reasoning.maxConcurrentPasses
+    return {
+      inFlight: episode.inFlight,
+      cap,
+      queued: episode.waiters.length,
+      peak: episode.peakInFlight,
+      saturated: episode.inFlight >= cap,
+    }
+  }
+
+  /**
+   * Executions currently holding a parallel-pass slot (spec 55).
+   *
+   * A call can be denied after the slot was taken — another gate may refuse
+   * it, or the caller may abort — so the holder is tracked per execution and
+   * released exactly once, by whoever reports the result.
+   */
+  private readonly slotHolders = new WeakMap<object, string>()
+
+  /** Remember that this execution holds a slot, and which run's. */
+  holdSlot(exec: object, key: string): void {
+    this.slotHolders.set(exec, key)
+  }
+
+  /** Release the slot this execution holds, if any; returns the run's key. */
+  releaseHeldSlot(exec: object): string | undefined {
+    const key = this.slotHolders.get(exec)
+    if (key === undefined) return undefined
+    this.slotHolders.delete(exec)
+    this.releaseSlot(key)
+    return key
   }
 
   // ---- spec 1: context thresholds ----
@@ -354,8 +487,14 @@ export class Fable51Policy extends Service {
   }
 
   // ---- specs 5 / 12: verification gates ----
-  recordGate(result: GateResult): GateResult {
-    return pushCapped(this.gateLog, result, GATE_LOG_CAP)
+  recordGate(result: GateResult, key?: string): GateResult {
+    const entry = pushCapped(this.gateLog, result, GATE_LOG_CAP)
+    // A failed gate is worth narrating (spec 4), and only the run that
+    // failed it should hear about it.
+    if (!result.pass && key !== undefined) {
+      this.episodes.get(key).failingGates += 1
+    }
+    return entry
   }
 
   // ---- spec 13: worklog ----

@@ -52,7 +52,45 @@ export interface EpisodeState {
   lastEvidenceTurn: number | null
   /** Turn counter driving the convergence window (spec 58). */
   turnCount: number
+  /**
+   * The turn the last pre-step observed (spec 4).
+   *
+   * A stage transition is a new turn: the agent moved to another unit of
+   * work. A step inside the same turn is not a transition, and narrating it
+   * is the spam this spec exists to kill.
+   */
+  lastObservedTurn: number | null
+  /** Verification gates that failed in this run (spec 4). */
+  failingGates: number
+  /** How many of those failures have already been narrated (spec 4). */
+  reportedFailingGates: number
+  /** Progress records: one per stage transition or gate failure (spec 4). */
+  readonly progress: ProgressRecord[]
+  /** Parallel passes currently running (spec 55). */
+  inFlight: number
+  /** Callers waiting for a parallel pass slot (spec 55). */
+  readonly waiters: Array<() => void>
+  /** Highest simultaneous parallel passes seen (spec 55). */
+  peakInFlight: number
+  /** How many callers were ever queued for a slot (spec 55). */
+  queuedTotal: number
 }
+
+/**
+ * A progress record (spec 4).
+ *
+ * `stage-transition` means the run moved to another unit of work;
+ * `gate-fail` means a verification gate failed. Nothing else is narrated:
+ * a per-step line is noise that buries the trail it sits in.
+ */
+export interface ProgressRecord {
+  readonly kind: 'stage-transition' | 'gate-fail'
+  readonly detail: string
+  readonly at: number
+}
+
+/** How many progress records one run keeps. */
+export const PROGRESS_CAP = 200
 
 function createEpisode(effortTier: EffortTier): EpisodeState {
   return {
@@ -68,6 +106,14 @@ function createEpisode(effortTier: EffortTier): EpisodeState {
     turnDistances: [],
     lastEvidenceTurn: null,
     turnCount: 0,
+    lastObservedTurn: null,
+    failingGates: 0,
+    reportedFailingGates: 0,
+    progress: [],
+    inFlight: 0,
+    waiters: [],
+    peakInFlight: 0,
+    queuedTotal: 0,
   }
 }
 

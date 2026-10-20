@@ -41,15 +41,18 @@ export function wireAgentPreStep(ctx: Context): void {
     // Cordis waterfalls do not catch listener throws, so every statement here is
     // contained: a plugin fault must be logged, never veto the step.
     try {
-      // spec 24: one observability line per step boundary.
-      svc.recordWorklog({
-        stage,
-        output: `pre-step observed (${Array.isArray(payload.messages) ? payload.messages.length : 0} messages)`,
-        check: 'agent/pre-step fired',
-        verdict: 'neutral',
-        unverified: [],
-        at: Date.now(),
-      })
+      // The run this step belongs to: the agent carries the session, and a
+      // session's progress, budget and ladder are its own.
+      const key = sessionKeyFromAgent(payload.agent)
+      const episode = svc.episode(key)
+      const turn = typeof payload.turn === 'number' ? payload.turn : 0
+
+      // spec 4: a stage transition is a new turn — the run moved to another
+      // unit of work. A step inside the same turn is not a transition, and
+      // narrating every step is the spam this spec exists to kill.
+      const transition = episode.lastObservedTurn !== turn
+      episode.lastObservedTurn = turn
+
       // spec 1: context threshold classification for the current message volume.
       const fillRatio = Math.min(1, (Array.isArray(payload.messages) ? payload.messages.length : 0) / 200)
       const action = svc.contextAction(fillRatio)
@@ -70,8 +73,6 @@ export function wireAgentPreStep(ctx: Context): void {
       const signals = svc.config.effort.escalateOn.filter((signal) => text.includes(signal))
       // The escalation belongs to the session whose agent took the step: one
       // session's signal must not raise another session's effort tier.
-      const key = sessionKeyFromAgent(payload.agent)
-      const episode = svc.episode(key)
       // Without this guard the accumulated transcript re-triggers the same signal
       // on every later step and pins the tier at `max` within a single task.
       if (signals.length > 0 && episode.effortEscalated !== true) {
@@ -87,6 +88,33 @@ export function wireAgentPreStep(ctx: Context): void {
             at: Date.now(),
           })
         }
+      }
+
+      // spec 4: narrate what the operator needs — the run moved, or a gate
+      // failed. Nothing else earns a line.
+      if (transition) {
+        svc.recordProgress(key, 'stage-transition', `turn ${turn} started`)
+        svc.recordWorklog({
+          stage,
+          output: `stage transition: turn ${turn} started`,
+          check: 'progress record',
+          verdict: 'neutral',
+          unverified: [],
+          at: Date.now(),
+        })
+      }
+      const failedGates = episode.failingGates - episode.reportedFailingGates
+      if (failedGates > 0) {
+        svc.recordProgress(key, 'gate-fail', `${failedGates} verification gate(s) failed`)
+        svc.markGatesReported(key)
+        svc.recordWorklog({
+          stage,
+          output: `gate failure: ${failedGates} gate(s) failed`,
+          check: 'progress record',
+          verdict: 'discarded',
+          unverified: ['a verification gate failed'],
+          at: Date.now(),
+        })
       }
     } catch (err) {
       ctx.logger('fable51').error(`agent/pre-step fault, admitting the step: ${String(err)}`)
