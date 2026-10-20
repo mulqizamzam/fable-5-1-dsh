@@ -201,7 +201,7 @@ pnpm build       # emit lib/, termasuk lib/cli.js
 
 Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
 0. Dengan visualizer, budget advisor, CLI, episode per-session, serta spec 4
-dan 55, validasi `--format` di CLI, serta advisor dengan ledger terisi: **278 test di
+dan 55, validasi `--format` di CLI, serta advisor dengan ledger terisi: **279 test di
 95 suite lulus**.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan

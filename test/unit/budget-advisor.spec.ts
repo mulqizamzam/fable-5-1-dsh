@@ -161,6 +161,33 @@ describe('fable51 budget-advisor tools', () => {
     }
   })
 
+  it('scales the recommendation with the data, not with a constant', async () => {
+    // Two runs with the same task class and different ledgers. The answer
+    // must track the data, so a hardcoded budget cannot pass this.
+    const contexts = await Promise.all([setup(), setup()])
+    try {
+      for (let i = 0; i < 10; i += 1) {
+        contexts[0]?.fable51.recordCost({ stage: 'tool:small', tokens: 100_000, latencyMs: 500, riskWeight: 0, at: Date.now() })
+        contexts[1]?.fable51.recordCost({ stage: 'tool:big', tokens: 200_000, latencyMs: 900, riskWeight: 0, at: Date.now() })
+      }
+
+      const small = await runAdvisor(contexts[0]!, { taskClass: 'open', minSamplesPerStage: 2 })
+      const big = await runAdvisor(contexts[1]!, { taskClass: 'open', minSamplesPerStage: 2 })
+
+      // 100000 * 5.0 = 500000, 200000 * 5.0 = 1000000: exactly proportional,
+      // and both stay under the 2000000 clamp so the ratio is the data's.
+      assert.equal(small.recommended.stageTokenBudget, 500_000)
+      assert.equal(big.recommended.stageTokenBudget, 1_000_000)
+      assert.equal(
+        big.recommended.stageTokenBudget,
+        small.recommended.stageTokenBudget * 2,
+        'twice the spend must buy twice the budget',
+      )
+    } finally {
+      await Promise.all(contexts.map((c) => c.fiber.dispose()))
+    }
+  })
+
   it('excludes a stage below the minimum sample count', async () => {
     const ctx = await setup()
     try {
