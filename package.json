@@ -15,6 +15,7 @@
   },
   "files": [
     "lib/",
+    "bin/",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"
@@ -28,6 +29,9 @@
     "orchestration"
   ],
   "license": "MIT",
+  "bin": {
+    "fable51": "./bin/fable51.js"
+  },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
