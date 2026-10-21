@@ -15,7 +15,7 @@ import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
-import SessionStore from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { DEFAULT_TENANT, scopeKeyOf } from '../../src/state/tenant.ts'
@@ -251,6 +251,126 @@ describe('tenant isolation', () => {
         await callAs(ctx, { id: `S${i}`, cwd: `/work/project-${i}` }, 'inspect', { format: 'json' })
       }
       assert.ok(ctx.fable51.tenants.size <= 4, `the registry grew to ${ctx.fable51.tenants.size}`)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('the tenant comes from the host session store, not from the bundle own cache', async () => {
+    const ctx = await setup()
+    try {
+      // The host owns the session and keeps the working directory on the
+      // session header, so the host's store is the authority on which tenant
+      // a session belongs to. This bundle's registry is only a cache of what
+      // the lifecycle told it.
+      ctx.sessions.create(SessionId('host-tenant-case'), { meta: { cwd: '/work/host-owned' } })
+
+      const fromHost = ctx.fable51.scopeKeyOfSessionId('host-tenant-case')
+      assert.ok(
+        fromHost.startsWith('/work/host-owned'),
+        `expected the host owned tenant, got ${fromHost}`,
+      )
+
+      // Take the cache out of the picture. The answer must not move, because
+      // it was never coming from the cache.
+      ctx.fable51.tenants.forget('host-tenant-case')
+      assert.equal(
+        ctx.fable51.tenants.tenantFor('host-tenant-case'),
+        undefined,
+        'the cached mapping must really be gone',
+      )
+
+      const afterForget = ctx.fable51.scopeKeyOfSessionId('host-tenant-case')
+      assert.equal(afterForget, fromHost, 'the host store is the source of truth, the cache is not')
+      assert.ok(
+        afterForget.startsWith('/work/host-owned'),
+        `expected the host owned tenant, got ${afterForget}`,
+      )
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('a session whose tenant mapping was evicted still lands in its own tenant', async () => {
+    const ctx = await setup({ tenants: { maxTenants: 4 } })
+    try {
+      // The registry is bounded, so a long-lived host evicts the oldest
+      // session to tenant mapping. An evicted mapping used to send the
+      // session to the DEFAULT tenant, where another tenant's spend and
+      // history could be read.
+      for (let i = 0; i < 20; i += 1) {
+        ctx.sessions.create(SessionId(`bounded-${i}`), { meta: { cwd: `/work/bounded-${i}` } })
+      }
+
+      // The eviction must really have happened, and the cache must still be
+      // in use for the newest session, or this case would prove nothing.
+      assert.equal(
+        ctx.fable51.tenants.tenantFor('bounded-0'),
+        undefined,
+        'the oldest mapping must have been evicted',
+      )
+      assert.equal(
+        ctx.fable51.tenants.tenantFor('bounded-19'),
+        '/work/bounded-19',
+        'the newest mapping must still be cached',
+      )
+
+      const scopeKey = ctx.fable51.scopeKeyOfSessionId('bounded-0')
+      assert.ok(
+        scopeKey.startsWith('/work/bounded-0'),
+        `an evicted session must still land in its own tenant, got ${scopeKey}`,
+      )
+      assert.notEqual(
+        scopeKey,
+        scopeKeyOf(DEFAULT_TENANT, 'bounded-0'),
+        'an evicted session must not fall into the default tenant',
+      )
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('two tenants naming the same session id keep separate ledgers and worklogs', async () => {
+    const ctx = await setup()
+    try {
+      // The scope key composes the tenant with the session, so two tenants
+      // may name the same session id without sharing an episode, a budget or
+      // a ledger.
+      await callAs(ctx, { id: 'shared-session-id', cwd: '/work/left' }, 'worklog-format', {
+        stage: 'left-stage', output: 'l', check: 'c', verdict: 'neutral', unverified: [],
+      })
+      await callAs(ctx, { id: 'shared-session-id', cwd: '/work/right' }, 'worklog-format', {
+        stage: 'right-stage', output: 'r', check: 'c', verdict: 'neutral', unverified: [],
+      })
+
+      const left = scopeKeyOf('/work/left', 'shared-session-id')
+      const right = scopeKeyOf('/work/right', 'shared-session-id')
+      assert.notEqual(left, right, 'the two tenants must not share a scope key')
+
+      const leftWorklog = ctx.fable51.worklogOf(left)
+      const rightWorklog = ctx.fable51.worklogOf(right)
+      assert.ok(
+        leftWorklog.some((entry) => entry.stage === 'left-stage'),
+        'the left tenant must own its own worklog line',
+      )
+      assert.ok(
+        !leftWorklog.some((entry) => entry.stage === 'right-stage'),
+        'the left tenant must not see the right tenant worklog line',
+      )
+      assert.ok(
+        rightWorklog.some((entry) => entry.stage === 'right-stage'),
+        'the right tenant must own its own worklog line',
+      )
+      assert.ok(
+        !rightWorklog.some((entry) => entry.stage === 'left-stage'),
+        'the right tenant must not see the left tenant worklog line',
+      )
+
+      const leftLedger = ctx.fable51.costLedgerOf(left)
+      const rightLedger = ctx.fable51.costLedgerOf(right)
+      assert.ok(leftLedger.length > 0, 'the left tenant booked a cost')
+      assert.ok(rightLedger.length > 0, 'the right tenant booked a cost')
+      assert.notEqual(leftLedger, rightLedger, 'the two tenants must not share one ledger')
     } finally {
       await ctx.fiber.dispose()
     }

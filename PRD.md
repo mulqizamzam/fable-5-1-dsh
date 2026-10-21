@@ -187,9 +187,9 @@ Tool murni harus memakai cache content-addressed dengan kunci
 `hash(argumen) + spec + fingerprint(config)`. Tool yang mengubah state service
 harus selalu eksekusi ulang dan tidak pernah membaca cache.
 
-- Terima: panggilan kedua dengan input sama mengembalikan `rerun:true`; 26 tool
+- Terima: panggilan kedua dengan input sama mengembalikan `rerun:true`; 28 tool
   effectful selalu eksekusi ulang.
-- Status: terpenuhi. Enumerasi mencatat 26 tool effectful, 66 tool murni.
+- Status: terpenuhi. Enumerasi mencatat 28 tool effectful, 64 tool murni.
 
 ### FR-05 Verdict tidak boleh mengarang
 
@@ -302,8 +302,8 @@ yang sama.
 Semua berkas teks: LF, UTF-8 tanpa BOM, newline di akhir berkas.
 
 - Terima: skrip pemeriksaan melaporkan nol pelanggaran.
-- Status: sebagian. Pada 79 berkas yang diperiksa, dua berkas tidak berakhir
-  newline: `HOWTOUSE.md` dan `test/unit/audit-defects.spec.ts`.
+- Status: terpenuhi. Pada 80 berkas teks yang diperiksa (76 tracked plus 4 baru),
+  nol berkas tanpa final newline, nol CRLF, nol BOM.
 
 ### FR-16 Isolasi penyewa
 
@@ -322,12 +322,29 @@ Blok `tenants` memilih batasnya: `cwd` memakai direktori kerja (default),
 `session` menjadikan tiap sesi penyewa sendiri, `none` mengembalikan satu
 penyewa bersama untuk seluruh host.
 
+Penyewa cari ke store sesi milik host (`ctx.sessions`), yang tahu direktori
+setiap sesi yang masih hidup. Registry internal bundle hanya cache cadangan:
+ia dibatasi dan meng-evict pemetaan tertua, jadi kalau hanya registry yang
+dipakai, pemetaan yang hilang membuat sesi hidup bermuara ke bucket `default`
+yang dipakai bersama. Itu kebocoran lintas penyewa, dan host store menutupnya.
+
+Sweep dua penyewa (`src/sweep.ts`, perintah `fable51 sweep`) menjalankan
+seluruh tool di dua direktori berbeda pada satu host, lalu mengukur apakah
+state satu penyewa mengubah apa yang dilihat penyewa lain. Yang diukur adalah
+counter, bukan kesamaan output: tool effectful memang boleh menjawab berbeda
+karena ledger yang dibaca berbeda, tapi counter yang bergerak di penyewa yang
+salah tidak bisa dibantah dengan normalizer.
+
 - Terima: dua penyewa tidak melihat cost ledger, worklog, gate log, atau
   lineage satu sama lain; budget advisor hanya menghitung booking penyawanya;
   `fable51 inspect` menyebut nama penyawanya; registry penyewa tidak tumbuh
   tanpa batas; dua sesi satu penyewa berbagi state tenant tetapi tidak
-  episode.
-- Status: terpenuhi (`src/state/tenant.ts`, `test/unit/tenant-isolation.spec.ts`).
+  episode; sweep dua penyewa lulus pada host sehat dan **gagal** pada host
+  yang batasnya dirusak; sesi yang pemetaan registry-nya sudah hilang tetap
+  kembali ke penyewanya sendiri, bukan ke `default`.
+- Status: terpenuhi (`src/state/tenant.ts`, `src/sweep.ts`,
+  `test/unit/tenant-isolation.spec.ts`, `test/unit/tenant-sweep.spec.ts`,
+  `test/unit/sweep-sensitivity.spec.ts`).
 
 ### FR-15 Paket bisa dipasang
 
@@ -474,7 +491,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
 | Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
-| Suite test | `pnpm test` | 306 test, 100 suite, 306 lulus, 0 gagal | lulus |
+| Suite test | `pnpm test` | 322 test, 102 suite, 322 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |
@@ -491,9 +508,13 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Isolasi penyewa | `test/unit/tenant-isolation.spec.ts` | ledger, worklog, gate log, dan lineage terpisah per penyewa; 13 tes | lulus |
 | Sweep dua arah | `test/unit/idempotency.spec.ts` | tiap tool dipanggil dua kali: tool murni jawab sama, tool effectful tak menyajikan cache, mutasi terjadi dua kali | lulus |
 | Replay ditandai di jejak audit | `test/unit/idempotency.spec.ts` | `check` `tools/result observed (cache replay)`, verdict `neutral`, bukan bukti baru | lulus |
+| Sweep dua penyewa | `test/unit/tenant-sweep.spec.ts` + `fable51 sweep` | 92 tool di dua penyewa satu host, 14 cek lulus, `VERDICT: PASS` | lulus |
+| Sweep bisa gagal | `test/unit/sweep-sensitivity.spec.ts` | dua sabotase (satu bucket runtuh, pemetaan hilang ke `default`) keduanya dilaporkan FAIL | lulus |
+| Penyewa dari host store | `test/unit/tenant-isolation.spec.ts` | setelah registry `forget()`, sesi tetap kembali ke penyewanya sendiri, bukan `default` | lulus |
+| Batas penyewa di host nyata | `dsh --profile fable-test headless` dari dua direktori berbeda | tenant `/home/administrator/agent-workspace/.../fable-5-1-dsh` vs `/tmp/fable51-other-project`, dua scope key berbeda | lulus |
 | Grup paralel tidak membuat host macet | `test/unit/progress-bandwidth.spec.ts` | desain lama hang >220 detik, desain baru 38 detik | lulus |
 
-Suite test terdiri dari 25 berkas unit, 1 integration, dan 1 e2e.
+Suite test terdiri dari 27 berkas unit, 1 integration, dan 1 e2e.
 
 ## 13. Batas, risiko, dan salah pakai
 
@@ -575,3 +596,4 @@ Suite test terdiri dari 25 berkas unit, 1 integration, dan 1 e2e.
 | 3 | 2026-10-21 | Advisor diverifikasi dengan cost ledger terisi, dan jalur antrean bandwidth dikarakterisasi sebagai tidak terjangkau host dsh 0.2.0-rc.2 |
 | 4 | 2026-10-21 | Isolasi penyewa: worklog, gate log, cost ledger, lineage, snapshot, dan cache dipisah per penyewa (FR-16) |
 | 5 | 2026-10-21 | Sweep dua arah: tiap tool dipanggil dua kali, dan jejak audit menandai jawaban yang dilayani dari cache dengan `check` `tools/result observed (cache replay)` |
+| 6 | 2026-10-21 | Sweep dua penyewa (`src/sweep.ts`, perintah `fable51 sweep`): 92 tool di dua penyewa satu host, 14 cek batas penyewa, plus test sensitivitas yang membuktikan sweep bisa gagal. Penyewa kini dicari dari store sesi host, bukan hanya registry internal yang bisa evict pemetaannya |

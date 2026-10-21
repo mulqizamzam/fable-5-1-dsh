@@ -25,8 +25,8 @@ Status di host ini, diverifikasi 2026-10-20:
 | Tool | 92, mencakup 91 spec id |
 | Hook | 5 (`agent/pre-step`, `tools/execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
-| CLI | `fable51 inspect`, `fable51 advise-budget` |
-| Test | 306 di 100 suite, semuanya lulus |
+| CLI | `fable51 inspect`, `fable51 advise-budget`, `fable51 sweep` |
+| Test | 322 di 102 suite, semuanya lulus |
 | Lisensi | MIT |
 
 Cakupan 100 spec di `sumber100specs.md`:
@@ -79,7 +79,7 @@ berhenti pada install yang sukses.
 |---|---|
 | Skill | Minta `fable-5-1-discipline`. Dia yang mengurutkan stage map, fork, verifikasi, merge, jadi kamu tidak perlu tahu nama tool. |
 | Tool | Panggil satu tool untuk satu cek. Yang sering dipakai: `fable51_verification-gates`, `fable51_stage-graph-dag`, `fable51_sandbox-boundaries`, `fable51_worklog-format`, `fable51_inspect`. |
-| CLI | `fable51 inspect` menampilkan state bundle tanpa agent. `fable51 advise-budget <taskClass>` merekomendasikan config budget. |
+| CLI | `fable51 inspect` menampilkan state bundle tanpa agent. `fable51 advise-budget <taskClass>` merekomendasikan config budget. `fable51 sweep` menjalankan seluruh tool di dua penyewa satu host dan melaporkan apakah batas penyewanya bertahan. |
 
 ```sh
 pnpm build                        # emits lib/, termasuk lib/cli.js
@@ -87,6 +87,7 @@ pnpm build                        # emits lib/, termasuk lib/cli.js
 fable51 inspect
 fable51 inspect --format json
 fable51 advise-budget multihop
+fable51 sweep                     # keluar 0 kalau batas penyewa bertahan
 ```
 
 `HOWTOUSE.md` punya peta 92 tool, prosedur operator, dan perintah verifikasi.
@@ -162,6 +163,14 @@ digambar host saat membuat sesi. Sesi tanpa direktori masuk ke penyewa
 halang. Registry penyewa dibatasi `maxTenants`, dan penyewa yang keluar dari
 ridi itu di-evict: history-nya hilang, bukan bocor ke penyewa lain.
 
+Penyewa sebuah sesi dicari dari **store sesi milik host** (`ctx.sessions`),
+yang tahu direktori setiap sesi yang masih hidup. Registry internal bundle ini
+hanya cache cadangan: ia dibatasi dan bisa evict pemetaan tertua, dan pemetaan
+yang hilang tidak boleh membuat sesi hidup bermuara ke bucket `default` yang
+dipakai bersama. `fable51 sweep` membuktikannya dengan menjalankan seluruh
+tool di dua penyewa pada satu host, jadi pemisahan itu terukur, bukan
+diasumsikan.
+
 ## Yang menahan vs yang cuma lapor
 
 Kebanyakan spec mengklasifikasi dan melaporkan, tidak memblokir. Tahu mana yang
@@ -222,10 +231,17 @@ pnpm typecheck   # tsc -b, lalu project test
 pnpm build       # emit lib/, termasuk lib/cli.js
 ```
 
-**306 test di 100 suite lulus**, dan `pnpm typecheck` exit 0. Cakupannya:
+**322 test di 102 suite lulus**, dan `pnpm typecheck` exit 0. Cakupannya:
 visualizer, budget advisor, CLI, episode per-session, isolasi penyewa, spec 4
 dan 55, validasi `--format` di CLI, advisor dengan ledger terisi, sweep seluruh
-tool, sweep dua arah, dan kontrak peer dependensi.
+tool, sweep dua arah, sweep dua penyewa, dan kontrak peer dependensi.
+
+Sweep dua penyewa (`test/unit/tenant-sweep.spec.ts`) menjalankan seluruh tool
+di dua direktori berbeda pada satu host, lalu mengukur apakah state satu
+penyewa mengubah apa yang dilihat penyewa lain. Sweep itu punya test
+sensitivitas (`test/unit/sweep-sensitivity.spec.ts`) yang sengaja merusak
+isolasi dan demanding sweep melaporkan kegagalan, karena sweep yang selalu
+lulus bukan bukti apa pun.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,

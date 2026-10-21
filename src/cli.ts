@@ -1,5 +1,5 @@
 /**
- * fable51 CLI: Policy Visualizer & Budget Advisor.
+ * fable51 CLI: Policy Visualizer, Budget Advisor & two-tenant sweep.
  *
  * Compiled to lib/cli.js by the main build so the published package ships a
  * working `fable51` binary: bin/fable51.js is a thin shim onto this module.
@@ -7,6 +7,7 @@
  * Usage:
  *   fable51 inspect [--format json|ascii] [--include-worklog] [--include-gate-log]
  *   fable51 advise-budget <taskClass> [--history-window N] [--min-samples N] [--format json|ascii]
+ *   fable51 sweep [--format json|ascii]
  */
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -14,9 +15,10 @@ import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from './index.ts'
+import { runTenantSweep, renderSweepReport } from './sweep.ts'
 
 const USAGE = [
-  'Usage: fable51 <inspect|advise-budget> [options]',
+  'Usage: fable51 <inspect|advise-budget|sweep> [options]',
   '',
   'Commands:',
   '  inspect          Render policy visualizer',
@@ -24,6 +26,8 @@ const USAGE = [
   '  advise-budget    Recommend budget config for a task class',
   '                 <bounded|search|multihop|open>',
   '                 --history-window N  --min-samples N  --format json|ascii',
+  '  sweep            Run every tool in two tenants of one host and report the checks',
+  '                 --format json|ascii',
 ].join('\n')
 
 /** Boot the real Cordis host with the bundle and the four services it injects. */
@@ -191,10 +195,47 @@ async function runAdviseBudget(args: string[]): Promise<number> {
   }
 }
 
+/**
+ * Run every tool in two tenants of one host and report what the sweep found.
+ *
+ * The sweep is the command that proves the tenant boundary holds, so it runs
+ * against a REAL host: the registry, the hooks and the dsh services are the
+ * shipped ones. A failing sweep exits 1, because a green exit code must mean
+ * the boundary held.
+ */
+async function runSweep(args: string[]): Promise<number> {
+  const parsed = formatValue(args)
+  if (!parsed.ok) {
+    console.error(parsed.error)
+    return 1
+  }
+  const format = parsed.format
+
+  const ctx = await boot()
+  try {
+    const report = await runTenantSweep(ctx)
+
+    if (format === 'json') {
+      console.log(JSON.stringify(report, null, 2))
+    } else {
+      console.log(renderSweepReport(report))
+    }
+
+    if (!report.pass) {
+      console.error(`sweep failed: ${report.failures.length} check(s) failed`)
+      return 1
+    }
+    return 0
+  } finally {
+    await ctx.fiber.dispose()
+  }
+}
+
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   const command = argv[0]
   if (command === 'inspect') return runInspect(argv.slice(1))
   if (command === 'advise-budget') return runAdviseBudget(argv.slice(1))
+  if (command === 'sweep') return runSweep(argv.slice(1))
   console.error(USAGE)
   return 1
 }

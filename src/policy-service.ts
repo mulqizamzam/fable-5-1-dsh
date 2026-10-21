@@ -214,45 +214,89 @@ export class Fable51Policy extends Service {
    * The scope key for a session VIEW, the agent's live handle on its session.
    *
    * The view carries the session id but not necessarily its directory, so
-   * the tenant comes from what the session lifecycle recorded when the
-   * session was created. A view that does carry the directory is trusted
-   * directly, and the directory is remembered for the views that do not.
+   * the tenant comes from the host's session store, which knows the
+   * directory of every live session. A view that does carry the directory
+   * is trusted directly, and the directory is remembered for the views that
+   * do not.
    */
   private scopeKeyOfSessionView(session: unknown): string {
     const sessionKey = sessionKeyOf(session)
-    if (cwdOfSession(session) === undefined) return this.scopeKeyOfSessionId(sessionKey)
     return scopeKeyOf(this.tenantKeyFor(session, sessionKey), sessionKey)
   }
 
   /**
    * The scope key for a bare session id.
    *
-   * The generation hook only ever names the session, never its directory, so
-   * the tenant comes from what the session lifecycle already recorded. A
-   * session nobody announced lands in the default tenant.
+   * The generation hook only ever names the session, never its directory,
+   * so the tenant comes from the host's session store. A session the host
+   * no longer keeps falls back to what this bundle recorded, and a session
+   * nobody ever announced lands in the default tenant.
    */
   scopeKeyOfSessionId(sessionId: string): string {
     const mode = this.config.tenants.mode
     if (mode === 'none') return scopeKeyOf(this.config.tenants.defaultKey, sessionId)
     if (mode === 'session') return scopeKeyOf(sessionId, sessionId)
-    const tenant = this.tenants.tenantFor(sessionId) ?? this.config.tenants.defaultKey
+    const tenant = this.hostTenantOf(sessionId)
+      ?? this.tenants.tenantFor(sessionId)
+      ?? this.config.tenants.defaultKey
     return scopeKeyOf(tenant, sessionId)
+  }
+
+  /**
+   * The tenant the HOST says a session belongs to.
+   *
+   * The host owns the session and keeps its working directory on the
+   * session header, so the host's session store is the authority on which
+   * tenant a session belongs to.
+   *
+   * This bundle's own registry is only a cache of what the lifecycle told
+   * us, and it is bounded: a long-lived host evicts the oldest mapping,
+   * and an evicted mapping used to send the session to the DEFAULT tenant,
+   * where another tenant's spend and history could be read. Asking the
+   * host first removes that hole; the registry stays as the fallback for a
+   * session the host does not keep.
+   */
+  private hostTenantOf(sessionId: string): string | undefined {
+    const store = (this.ctx as {
+      sessions?: { get(id: string): { header?: { cwd?: string } } | undefined }
+    }).sessions
+    if (store === undefined || typeof store.get !== 'function') return undefined
+    let session: { header?: { cwd?: string } } | undefined
+    try {
+      session = store.get(sessionId)
+    } catch {
+      return undefined
+    }
+    const cwd = session?.header?.cwd
+    if (typeof cwd !== 'string' || cwd.length === 0) return undefined
+    return tenantKeyFromCwd(cwd, this.config.tenants.defaultKey)
   }
 
   /**
    * The tenant a session belongs to.
    *
    * The working directory is the boundary the host already draws when it
-   * creates a session. A session that names no directory lands in the
-   * default tenant, which is a real bucket and never a wildcard.
+   * creates a session. A session that names no directory is asked about by
+   * id, because the host still knows where it lives. A session nobody ever
+   * announced lands in the default tenant, which is a real bucket and never
+   * a wildcard.
    */
   private tenantKeyFor(session: unknown, sessionKey: string): string {
     const mode = this.config.tenants.mode
     if (mode === 'none') return this.config.tenants.defaultKey
     if (mode === 'session') return sessionKey
-    const tenant = tenantKeyFromCwd(cwdOfSession(session), this.config.tenants.defaultKey)
-    this.tenants.remember(sessionKey, tenant)
-    return tenant
+    const cwd = cwdOfSession(session)
+    if (cwd !== undefined) {
+      const tenant = tenantKeyFromCwd(cwd, this.config.tenants.defaultKey)
+      this.tenants.remember(sessionKey, tenant)
+      return tenant
+    }
+    const fromHost = this.hostTenantOf(sessionKey)
+    if (fromHost !== undefined) {
+      this.tenants.remember(sessionKey, fromHost)
+      return fromHost
+    }
+    return this.tenants.tenantFor(sessionKey) ?? this.config.tenants.defaultKey
   }
 
   /** The tenant state a scope key owns. */

@@ -1,5 +1,5 @@
 /**
- * tools/execute hook — spec 55 (reasoning-bandwidth).
+ * tools/execute hook, spec 55 (reasoning-bandwidth).
  *
  * Verified contract: `tools/execute` is the AROUND-DISPATCH waterfall. The
  * listener receives `(exec, next)`; `next()` runs the tool body and returns

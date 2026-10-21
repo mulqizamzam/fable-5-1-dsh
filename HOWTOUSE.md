@@ -96,6 +96,9 @@ fable51 inspect --include-worklog --include-gate-log
 fable51 advise-budget multihop    # stageTokenBudget, maxForkDepth, effortTier yang disarankan
 fable51 advise-budget search --format json
 fable51 advise-budget open --history-window 200 --min-samples 5
+
+fable51 sweep                     # 92 tool di dua penyewa satu host, lalu 14 cek batas penyewa
+fable51 sweep --format json
 ```
 
 `fable51 inspect` read-only. `fable51 advise-budget` membaca cost ledger
@@ -103,6 +106,16 @@ fable51 advise-budget open --history-window 200 --min-samples 5
 task, dengan label confidence dari jumlah sampel. Ledger kosong jatuh ke
 default kelas task dengan confidence `low`, jadi rekomendasinya lantai, bukan
 pengukuran.
+
+`fable51 sweep` menjalankan seluruh tool di dua direktori berbeda pada satu
+host, lalu mengukur apakah state satu penyewa mengubah apa yang dilihat
+penyewa lain: worklog, gate log, cost ledger, lineage, snapshot, cache, dan
+anggaran per stage. Yang diukur adalah counter, bukan kesamaan output, karena
+tool yang menyentuh state memang boleh menjawab berbeda. Exit code 0 kalau
+semua cek lulus, 1 kalau ada yang gagal, jadi bisa dipakai sebagai gerbang
+di pipeline. Sweep yang selalu lulus bukan bukti apa pun, jadi ada test
+sensitivitas yang sengaja merusak isolasi dan menuntut sweep melaporkan
+kegagalan.
 
 CLI me-boot bundle sendiri, jadi yang kamu lihat adalah bentuk sebuah bundle,
 bukan state live host yang sedang jalan. Untuk melihat host yang live, panggil
@@ -303,7 +316,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan seluruh suite (sekarang 306 test di 100 suite) dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 322 test di 102 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -336,7 +349,7 @@ dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
 
 **Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
-`pnpm test` menjalankan 306 test di 100 suite, semuanya lulus; `pnpm typecheck`
+`pnpm test` menjalankan 322 test di 102 suite, semuanya lulus; `pnpm typecheck`
 exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
@@ -429,7 +442,7 @@ yang diisi lifecycle sesi, jadi tool yang dipanggil model tetap mendarat di
 penyewa yang benar.
 
 **Diverifikasi bahwa satu penyewa tidak melihat yang lain
-(2026-10-21):** `test/unit/tenant-isolation.spec.ts` menjalankan 13 kasus:
+(2026-10-21):** `test/unit/tenant-isolation.spec.ts` menjalankan 16 kasus:
 ledger, worklog, gate log, dan lineage terpisah; panggilan tool di satu
 penyewa tidak membebani anggaran penyewa lain; budget advisor hanya menghitung
 booking pemanggilnya; dua sesi satu penyewa berbagi state tenant tapi tidak
@@ -462,5 +475,81 @@ host nyata: satu tool `fable51_chain-vs-tree` dipanggil dua kali dengan
 argumen sama, dan `fable51 inspect` melaporkan dua entri worklog dengan nilai
 `check` yang berbeda: `tools/result observed` dan
 `tools/result observed (cache replay)`.
+
+**Diverifikasi bahwa dua penyewa benar-benar terpisah (2026-10-21):**
+`fable51 sweep` menjalankan seluruh 92 tool di dua direktori berbeda pada satu
+host, lalu 14 cek mengukur apakah state satu penyewa mengubah apa yang dilihat
+penyewa lain. Hasil: 13 dari 13 lulus, `VERDICT: PASS`, exit code 0. Yang
+diukur adalah counter, bukan kesamaan output, karena tool yang menyentuh state
+memang boleh menjawab berbeda. Yang diukur antara lain: pemanggilan di penyewa
+pertama tidak menyentuh penyewa kedua maupun bucket `default`; pemanggilan di
+penyewa kedua tidak mengubah counter penyewa pertama; kedua penyewa memegang
+jumlah state yang sama; tidak ada state di penyewa lain selain dua yang
+disapu; tool murni menjawab sama di kedua penyewa; cache idempotency tidak
+melayani panggilan pertama penyewa kedua (jadi `rerun` tetap `false`); lineage
+menerima pass id yang sama di kedua penyewa (lineage itu append-only per
+penyewa, jadi penyawaan bersama akan menolak yang kedua); dan anggaran per
+stage yang dibebankan di satu penyewa tidak ditambah di penyewa lain.
+
+**Sweep itu bisa gagal, dan itu dibuktikan (2026-10-21):** sweep yang selalu
+lulus bukan bukti apa pun, jadi `test/unit/sweep-sensitivity.spec.ts` merusak
+isolasi dengan sengaja dan menuntut sweep melaporkan kegagalan. Dua sabotase
+diuji: (1) kedua penyewa runtuh jadi satu bucket, dan (2) pemetaan penyewa
+sesi hilang dari registry sehingga sesinya jatuh ke bucket `default` yang
+dipakai bersama. Keduanya dilaporkan FAIL, dan pada sabotase kedua bucket
+`default` tercatat berisi worklog, ledger, dan cache milik sesi yang bukan
+miliknya. Bentuk kedua itulah bug nyata yang ditemukan di sesi ini.
+
+**Defect yang ditemukan dan diperbaiki saat menambah sweep dua penyewa
+(2026-10-21):** penyewa sebuah sesi dicari dari registry internal bundle ini
+saja. Registry itu dibatasi dan meng-evict pemetaan tertua, jadi pada host
+yang sudah lama-serving, pemetaan sesi yang sudah hilang membuat panggilan
+tanpa direktori (jalur `llm/stream` hanya punya session id) mendarat di bucket
+`default`, yang dipakai bersama semua sesi yang tidak diketahui. Itu
+kebocoran lintas penyewa yang bentuknya persis kebocoran yang fitur ini
+dimaksudkan menutupnya. Penyewa kini dicari dari store sesi milik host
+(`ctx.sessions`), yang tahu direktori setiap sesi yang masih hidup, dan
+registry internal hanya cache cadangan. Terbukti load-bearing: setelah
+registry di-`forget()`, `scopeKeyOfSessionId` tetap mengembalikan penyewa
+milik sesi itu sendiri, bukan `default`.
+
+**Diverifikasi di host nyata (2026-10-21):** dua sesi headless dari dua
+direktori berbeda memanggil `fable51_inspect` pada host yang sama. Yang
+berjalan dari `/home/administrator/agent-workspace/dsh-custom/plugins/fable-5-1-dsh`
+lapisan `tenant` berisi direktori itu; yang berjalan dari
+`/tmp/fable51-other-project` berisi direktori itu. Dua scope key berbeda,
+satu host.
+
+**Defect yang ditemukan verifier dingin dan sudah ditutup (2026-10-21):**
+sebuah verifier dengan konteks segar dan script sendiri memeriksa sweep ini,
+dan menemukan tiga lubang yang tidak terlihat dari test yang menulis test itu
+sendiri. Pertama, cek "pass lineage per penyewa" hanya memeriksa bahwa tool
+tidak menolak, jadi sabotase yang Lineagenya saja berbagi (semua penyewa
+berpakai satu lineage) tetap dilaporkan lulus. Kedua, sweep itu sendiri
+memakai argumen generik untuk tool pemangkas lineage, sehingga keep-set-nya
+tidak cocok dengan pass mana pun dan sweep menghapus pass yang baru ia
+rekam; lineage pun kosong di setiap pengukuran, jadi tidak ada yang bisa
+diukur. Ketiga, kunci scope penyewa kedua dihitung manual dari direktori
+mentah, sedangkan service menormalkan slash di akhir, jadi direktori berslash
+mengarah ke bucket hantu yang selalu kosong dan ceknya jadi hampa. Ketiganya
+sudah ditutup: cek lineage kini memeriksa isi lineage tiap penyewa, argumen
+pemangkas menamai pass milik sweep sendiri, dan kedua kunci scope kini
+diambil dari service. Test regresi untuk ketiganya ada di
+`test/unit/sweep-sensitivity.spec.ts`.
+
+**Empat temuan lanjutan dari verifier yang sama, dan semuanya ditutup
+(2026-10-21):** keempat. Sweep memakai id sesi tetap, jadi host menolak id
+ganda dan sweep kedua di host yang sama melempar exception alih-alih
+melaporkan; sekarang id sesi dan id pass membawa nomor jalannya, jadi sweep
+bisa diulang dan tetap melaporkan. Kelima, ring progres milik run tidak
+dibandingkan antar penyewa, dan karena tidak ada tool yang menulis progres,
+sweep menulis satu catatan per penyewa lalu memastikan tiap penyewa hanya
+melihat catatannya sendiri; sekarang ring progres ikut dibandingkan dan
+sweep menuliskan catatannya sendiri. Keenam, perbandingan antar penyewa
+hanya membandingkan jumlah, jadi kebocoran yang tidak mengubah jumlah bisa
+terlewat; lineage kini juga dibandingkan isinya dan objeknya, bukan cuma
+isinya sama. Ketujuh, tiga angka di dokumen usang (jumlah tool effectful,
+jumlah test, status aturan encoding) sudah dikoreksi dan dicocokkan ulang
+dengan pengukuran.
 
 **Belum diverifikasi:** tidak ada lagi butir yang tersisa.
