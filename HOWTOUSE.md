@@ -242,13 +242,18 @@ memakai artifact lama sampai restart.
 
 ## 8. Batas yang harus kamu tahu
 
-1. **Audit trail per-host, budget per-session.** Satu `ctx.fable51` melayani
-   semua session di host: worklog, cost ledger, reason cache, snapshot store,
-   dan lineage berbagi. Audit jangka panjang memang di level host, dan
-   `fable51 inspect` menampilkan gambaran itu. Yang menegakkan run (stage token
-   budget, jatah fork/merge, escalation ladder, replan count, effort tier,
-   convergence window) di-key per session. `turn/start` hanya me-reset budget
+1. **Audit trail per-penyewa, budget per-session.** Satu `ctx.fable51` melayani
+   semua session di host, tapi worklog, cost ledger, reason cache, snapshot
+   store, dan lineage di-key per penyewa, jadi satu project tidak membaca
+   milik project lain. Yang menegakkan run (stage token budget, jatah
+   fork/merge, escalation ladder, replan count, effort tier, convergence
+   window) di-key per session. `turn/start` hanya me-reset budget
    session-nya sendiri.
+
+   Jejak audit mencatat setiap pemanggilan dan menandai yang mana yang
+   benar-benar jalan: `check` bernilai `tools/result observed` untuk
+   eksekusi, `tools/result observed (cache replay)` untuk jawaban yang
+   dilayani dari cache tanpa menjalankan body.
 
    Identitas session datang dari host: `Agent.session.id` untuk pre-step hook
    dan eksekusi tool, `GenerateOptions.sessionId` untuk stream hook, dan objek
@@ -298,7 +303,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan seluruh suite (sekarang 302 test di 99 suite) dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 306 test di 100 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -331,7 +336,7 @@ dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
 
 **Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
-`pnpm test` menjalankan 302 test di 99 suite, semuanya lulus; `pnpm typecheck`
+`pnpm test` menjalankan 306 test di 100 suite, semuanya lulus; `pnpm typecheck`
 exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
@@ -429,5 +434,26 @@ ledger, worklog, gate log, dan lineage terpisah; panggilan tool di satu
 penyewa tidak membebani anggaran penyewa lain; budget advisor hanya menghitung
 booking pemanggilnya; dua sesi satu penyewa berbagi state tenant tapi tidak
 episode; dan registry penyewa tidak tumbuh melewati `maxTenants`.
+
+**Diverifikasi bahwa tiap tool berperilaku sama saat dipanggil dua kali
+(2026-10-21):** `test/unit/idempotency.spec.ts` memanggil setiap tool
+dua kali dengan argumen yang sama, lalu memeriksa dua arah. Tool
+murni harus menjawab sama untuk input yang sama; tool yang menyentuh state
+tidak boleh menyajikan jawaban dari cache, karena replay akan melewati
+mutasinya juga. Gerbang mutasi diuji langsung: dua `verification-gates`
+meninggalkan dua gate, dua `token-budget-per-stage` menghabiskan anggaran
+dua kali, dua `pass-cost-accounting` membukukan dua entri, dan dua
+`reasoning-forking` memakai dua jatah fork.
+
+**Jejak audit sekarang menandai replay (2026-10-21):** sweep dua-arah
+membongkar bahwa baris worklog untuk pemanggilan yang di-replay identik
+dengan baris untuk eksekusi sungguhan, jadi operator tidak bisa tahu tool
+itu pernah jalan atau tidak. Baris replay kini punya `check`
+`tools/result observed (cache replay)`, verdict `neutral`, dan alasan di
+`unverified`; dan replay tidak dihitung sebagai bukti baru. Terverifikasi di
+host nyata: satu tool `fable51_chain-vs-tree` dipanggil dua kali dengan
+argumen sama, dan `fable51 inspect` melaporkan dua entri worklog dengan nilai
+`check` yang berbeda: `tools/result observed` dan
+`tools/result observed (cache replay)`.
 
 **Belum diverifikasi:** tidak ada lagi butir yang tersisa.

@@ -26,7 +26,7 @@ Status di host ini, diverifikasi 2026-10-20:
 | Hook | 5 (`agent/pre-step`, `tools/execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget` |
-| Test | 302 di 99 suite, semuanya lulus |
+| Test | 306 di 100 suite, semuanya lulus |
 | Lisensi | MIT |
 
 Cakupan 100 spec di `sumber100specs.md`:
@@ -222,10 +222,10 @@ pnpm typecheck   # tsc -b, lalu project test
 pnpm build       # emit lib/, termasuk lib/cli.js
 ```
 
-**302 test di 99 suite lulus**, dan `pnpm typecheck` exit 0. Cakupannya:
+**306 test di 100 suite lulus**, dan `pnpm typecheck` exit 0. Cakupannya:
 visualizer, budget advisor, CLI, episode per-session, isolasi penyewa, spec 4
 dan 55, validasi `--format` di CLI, advisor dengan ledger terisi, sweep seluruh
-tool, dan kontrak peer dependensi.
+tool, sweep dua arah, dan kontrak peer dependensi.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
@@ -233,14 +233,20 @@ service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
 
 ## Batas yang harus kamu tahu
 
-- **Audit trail per-host, budget per-session.** Satu `ctx.fable51` melayani
-  semua session di host, jadi worklog, cost ledger, reason cache, snapshot
-  index, dan pass lineage dibagi. Audit jangka panjang memang di level host,
-  dan `fable51 inspect` menampilkan gambaran itu. Yang menegakkan run (stage
+- **Audit trail per-penyewa, budget per-session.** Satu `ctx.fable51` melayani
+  semua session di host, tapi worklog, cost ledger, reason cache, snapshot
+  index, dan pass lineage di-key per penyewa (lihat "Batas penyewa"), jadi
+  satu project tidak membaca milik project lain. Yang menegakkan run (stage
   token budget, jatah fork/merge, escalation ladder, replan count, effort
   tier, convergence window) di-key per session. `turn/start` hanya me-reset
   budget session-nya sendiri, jadi satu session tidak bisa menghapus budget
   session lain.
+
+  Jejak audit mencatat setiap pemanggilan, dan menandai yang mana yang
+  benar-benar jalan: baris dengan `check` `tools/result observed` adalah
+  eksekusi, `tools/result observed (cache replay)` adalah jawaban yang
+  dilayani dari cache idempotency tanpa menjalankan body. Tanpa penanda itu,
+  pemanggilan yang di-replay tidak bisa dibedakan dari eksekusi sungguhan.
 
   Identitas session datang dari host: `Agent.session.id` untuk pre-step hook
   dan eksekusi tool, `GenerateOptions.sessionId` untuk stream hook, dan objek
