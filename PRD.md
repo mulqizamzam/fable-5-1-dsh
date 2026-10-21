@@ -491,7 +491,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Isolasi penyewa | `test/unit/tenant-isolation.spec.ts` | ledger, worklog, gate log, dan lineage terpisah per penyewa; 13 tes | lulus |
 | Grup paralel tidak membuat host macet | `test/unit/progress-bandwidth.spec.ts` | desain lama hang >220 detik, desain baru 38 detik | lulus |
 
-Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
+Suite test terdiri dari 24 berkas unit, 1 integration, dan 1 e2e.
 
 ## 13. Batas, risiko, dan salah pakai
 
