@@ -490,6 +490,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Sweep semua tool di host nyata | `test/unit/sweep.spec.ts` | 92 dari 92 tool menerima argumen schema-nya, 0 error host | lulus |
 | Isolasi penyewa | `test/unit/tenant-isolation.spec.ts` | ledger, worklog, gate log, dan lineage terpisah per penyewa; 13 tes | lulus |
 | Sweep dua arah | `test/unit/idempotency.spec.ts` | tiap tool dipanggil dua kali: tool murni jawab sama, tool effectful tak menyajikan cache, mutasi terjadi dua kali | lulus |
+| Replay ditandai di jejak audit | `test/unit/idempotency.spec.ts` | `check` `tools/result observed (cache replay)`, verdict `neutral`, bukan bukti baru | lulus |
 | Grup paralel tidak membuat host macet | `test/unit/progress-bandwidth.spec.ts` | desain lama hang >220 detik, desain baru 38 detik | lulus |
 
 Suite test terdiri dari 25 berkas unit, 1 integration, dan 1 e2e.
@@ -573,4 +574,4 @@ Suite test terdiri dari 25 berkas unit, 1 integration, dan 1 e2e.
 | 2 | 2026-10-20 | Cakupan spec 100/100 (spec 4 dan 55 diisi), 92 tool, 5 hook, episode per session, CLI `fable51 inspect` dan `advise-budget`, jalur agent loop terverifikasi end-to-end, panduan operator dipindah ke `HOWTOUSE.md` |
 | 3 | 2026-10-21 | Advisor diverifikasi dengan cost ledger terisi, dan jalur antrean bandwidth dikarakterisasi sebagai tidak terjangkau host dsh 0.2.0-rc.2 |
 | 4 | 2026-10-21 | Isolasi penyewa: worklog, gate log, cost ledger, lineage, snapshot, dan cache dipisah per penyewa (FR-16) |
-| 5 | 2026-10-21 | Sweep dua arah: tiap tool dipanggil dua kali, dan jejak audit menandai jawaban yang dilayani dari cache |
+| 5 | 2026-10-21 | Sweep dua arah: tiap tool dipanggil dua kali, dan jejak audit menandai jawaban yang dilayani dari cache dengan `check` `tools/result observed (cache replay)` |

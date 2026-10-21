@@ -442,8 +442,15 @@ murni harus menjawab sama untuk input yang sama; tool yang menyentuh state
 tidak boleh menyajikan jawaban dari cache, karena replay akan melewati
 mutasinya juga. Gerbang mutasi diuji langsung: dua `verification-gates`
 meninggalkan dua gate, dua `token-budget-per-stage` menghabiskan anggaran
-dua kali, dua `pass-cost-accounting` membukukan dua entri, dan dua
-`reasoning-forking` memakai dua jatah fork.
+dua kali, dua `pass-cost-accounting` membukukan dua entri, dua
+`reasoning-forking` memakai dua jatah fork, dua `merge-strategy` memakai dua
+jatah merge, dua `escalation-ladder` naik dua tangga, dua `replan-budget`
+menggunakan dua replan, dan dua `worklog-format` menulis dua baris.
+
+Dua tool menolak pemanggilan kedua dengan alasan, bukan diam: `reasoning-dag`
+dan `reasoning-lineage` menyimpan pass di lineage yang append-only, jadi pass
+id yang sama ditolak dengan pesan "already recorded, lineage is append-only".
+Itu penolakan yang jujur, bukan jawaban basi.
 
 **Jejak audit sekarang menandai replay (2026-10-21):** sweep dua-arah
 membongkar bahwa baris worklog untuk pemanggilan yang di-replay identik

@@ -58,6 +58,12 @@ async function call(ctx: Context, name: string, args: Record<string, unknown>): 
   return result.value as unknown as Envelope
 }
 
+/**
+ * The tools that record a pass in the append-only lineage. A second call with
+ * the same pass id is a genuine refusal, not a stale answer.
+ */
+const APPEND_ONLY = new Set(['reasoning-dag', 'reasoning-lineage'])
+
 describe('every tool, called twice', () => {
   it('a pure tool answers the same for the same input', async () => {
     const ctx = await setup()
@@ -93,6 +99,16 @@ describe('every tool, called twice', () => {
           false,
           `${spec.name} touches state, so a replayed answer would skip the mutation`,
         )
+        // A repeat call must not fail by accident. The two tools that record a
+        // pass in the append-only lineage refuse a duplicate id, and that
+        // refusal must be explicit rather than a stale answer.
+        if (APPEND_ONLY.has(spec.name)) {
+          assert.equal(second.ok, false, `${spec.name} must refuse a duplicate pass id`)
+          const reason = String((second.output as { error?: unknown }).error ?? '')
+          assert.match(reason, /already recorded/, `${spec.name} must say why it refused: ${reason}`)
+        } else {
+          assert.equal(second.ok, true, `${spec.name} must still succeed on a repeat call`)
+        }
       }
     } finally {
       await ctx.fiber.dispose()
@@ -141,6 +157,44 @@ describe('every tool, called twice', () => {
         ctx.fable51.episode(DEFAULT_SCOPE).forksThisStage,
         2,
         'two calls must consume two forks',
+      )
+
+      // The merge allowance: two calls must consume two merges.
+      const mergeArgs = { strategy: 'weighted', sets: [['a'], ['b']] }
+      await call(ctx, 'merge-strategy', mergeArgs)
+      await call(ctx, 'merge-strategy', mergeArgs)
+      assert.equal(
+        ctx.fable51.episode(DEFAULT_SCOPE).mergesThisStage,
+        2,
+        'two calls must consume two merges',
+      )
+
+      // The escalation ladder: two calls must advance two rungs.
+      await call(ctx, 'escalation-ladder', { failed: true })
+      await call(ctx, 'escalation-ladder', { failed: true })
+      assert.equal(
+        ctx.fable51.episode(DEFAULT_SCOPE).rung,
+        2,
+        'two calls must advance the ladder two rungs',
+      )
+
+      // The replan budget: two calls must spend two replans.
+      await call(ctx, 'replan-budget', {})
+      await call(ctx, 'replan-budget', {})
+      assert.equal(
+        ctx.fable51.episode(DEFAULT_SCOPE).replans,
+        2,
+        'two calls must spend two replans',
+      )
+
+      // The worklog: two calls must write two lines.
+      const worklogArgs = { stage: 'twice', output: 'o', check: 'c', verdict: 'neutral' }
+      await call(ctx, 'worklog-format', worklogArgs)
+      await call(ctx, 'worklog-format', worklogArgs)
+      assert.equal(
+        ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((entry) => entry.stage === 'twice').length,
+        2,
+        'two calls must write two worklog lines',
       )
     } finally {
       await ctx.fiber.dispose()
