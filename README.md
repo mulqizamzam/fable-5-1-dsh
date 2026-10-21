@@ -26,7 +26,7 @@ Status di host ini, diverifikasi 2026-10-20:
 | Hook | 5 (`agent/pre-step`, `tools/execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget` |
-| Test | 282 di 96 suite, semuanya lulus |
+| Test | 283 di 96 suite, semuanya lulus |
 | Lisensi | MIT |
 
 Cakupan 100 spec di `sumber100specs.md`:
@@ -249,11 +249,10 @@ service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
   `dsh-session` di sana hanya untuk tipe. Entry CLI (`src/cli.ts`) berbeda:
   ia meng-import `dsh-tools`, `dsh-llm`, `dsh-session`, dan
   `dsh-system-prompt` sebagai runtime dependency. Semuanya dideklarasikan di
-  `peerDependencies` paket ini; `dsh-llm`, `dsh-session`, dan
+  `peerDependencies` paket ini. `schemastery` dan `dsh-tools` wajib ada
+  karena jalur plugin memakainya; `dsh-llm`, `dsh-session`, dan
   `dsh-system-prompt` ditandai optional karena hanya dibutuhkan oleh entry
-  CLI, bukan oleh jalur plugin. `schemastery` resolve lewat dependensi
-  `dsh-tools` host dan tidak dideklarasikan langsung di `peerDependencies`
-  paket ini.
+  CLI, bukan oleh jalur plugin.
 
 ## Dokumen
 

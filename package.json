@@ -46,6 +46,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.4",
     "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2",
+    "@deepseek-ai/schemastery": "^3.18.4",
     "@deepseek-ai/dsh-llm": ">=0.2.0-rc.2",
     "@deepseek-ai/dsh-agent": ">=0.2.0-rc.2",
     "@deepseek-ai/dsh-session": ">=0.2.0-rc.2",
@@ -67,6 +68,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "link:/home/administrator/deepseek-harness/vendor/cordis",
+    "@deepseek-ai/schemastery": "link:/home/administrator/deepseek-harness/vendor/schemastery",
     "@deepseek-ai/dsh-tools": "link:/home/administrator/deepseek-harness/packages/core/tools",
     "@deepseek-ai/dsh-llm": "link:/home/administrator/deepseek-harness/packages/llm/llm",
     "@deepseek-ai/dsh-agent": "link:/home/administrator/deepseek-harness/packages/core/agent",

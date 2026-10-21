@@ -19,9 +19,6 @@ const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as
   devDependencies?: Record<string, string>
 }
 
-/** Packages the host resolves for us; see README "Import runtime". */
-const HOST_RESOLVED = new Set(['@deepseek-ai/schemastery'])
-
 /** Every .ts file under a directory, recursively. */
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -52,9 +49,7 @@ describe('package manifest', () => {
       ...Object.keys(manifest.dependencies ?? {}),
       ...Object.keys(manifest.peerDependencies ?? {}),
     ])
-    const undeclared = [...runtimeImports()].filter(
-      (name) => !declared.has(name) && !HOST_RESOLVED.has(name),
-    )
+    const undeclared = [...runtimeImports()].filter((name) => !declared.has(name))
     assert.deepEqual(
       undeclared,
       [],

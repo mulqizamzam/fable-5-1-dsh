@@ -337,10 +337,12 @@ or ascii`.
 **Diverifikasi saat menutup gap peer dependensi (2026-10-21):**
 `dsh-system-prompt` dideklarasikan sebagai peer optional dengan range
 `>=0.2.0-rc.2`, sama dengan `dsh-llm` dan `dsh-session` yang juga hanya
-dipakai entry CLI. `test/unit/package-deps.spec.ts` mengunci aturan itu: setiap
+dipakai entry CLI. `schemastery` dideklarasikan sebagai peer wajib dengan range
+`^3.18.4`, karena jalur plugin memakainya untuk schema `Config`. `test/unit/package-deps.spec.ts` mengunci aturan itu: setiap
 import runtime harus terdeklarasi di `dependencies` atau `peerDependencies`,
 dan test itu gagal di manifest lama dengan pesan `runtime imports missing from
-dependencies and peerDependencies: @deepseek-ai/dsh-system-prompt`.
+dependencies and peerDependencies:` diikuti nama paketnya, `dsh-system-prompt`
+untuk gap pertama dan `@deepseek-ai/schemastery` untuk gap kedua.
 
 **Diverifikasi setelah restart host (2026-10-21):** host web yang berjalan
 waktu itu adalah PID 267169, start 01:08:27. Artifact `lib/` terakhir dibangun
