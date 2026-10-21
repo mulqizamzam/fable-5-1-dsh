@@ -68,10 +68,10 @@ disiplin model saja.
 1. **Klaim tanpa bukti.** Model bisa menulis "sudah diverifikasi" tanpa
    artefak, perintah, atau output. Tidak ada tempat yang mencatat klaim itu
    dengan bukti yang bisa diperiksa ulang.
-2. **Struktur reasoning tidak terlihat.** Fork, merge, retry, replan, dan
+3. **Struktur reasoning tidak terlihat.** Fork, merge, retry, replan, dan
    eskalasi berjalan tanpa ledger. Setelah sesi selesai, tidak ada cara
    mengetahui berapa pass yang dibuat, mana yang dibuang, dan berapa biayanya.
-3. **Konfigurasi plugin gagal diam.** Typo satu key membuat plugin berjalan
+4. **Konfigurasi plugin gagal diam.** Typo satu key membuat plugin berjalan
    dengan nilai lain tanpa error. Operator mengira pengaman aktif padahal tidak.
 
 Bundle ini menutup ketiganya dengan service yang menyimpan ledger, envelope
@@ -305,6 +305,30 @@ Semua berkas teks: LF, UTF-8 tanpa BOM, newline di akhir berkas.
 - Status: sebagian. Pada 79 berkas yang diperiksa, dua berkas tidak berakhir
   newline: `HOWTOUSE.md` dan `test/unit/audit-defects.spec.ts`.
 
+### FR-16 Isolasi penyewa
+
+Satu host melayani banyak sesi. Worklog, gate log, cost ledger, lineage pass,
+snapshot, dan cache idempotency sebelumnya bersifat host-wide: satu penyewa
+bisa membaca belanja dan riwayat penyewa lain, dan budget advisor menghitung
+rekomendasi dari booking yang tidak pernah dibuat pemanggilnya.
+
+Setiap state bersama itu harus hidup di bawah satu penyewa. Penyewa diambil
+dari direktori kerja sesi, karena itu batas yang sudah digambar host saat
+membuat sesi. Sesi tanpa direktori masuk ke penyewa default, yang adalah
+bucket sungguhan, bukan wildcard. Kunci scope menggabungkan penyewa dengan
+sesi, jadi episode, anggaran, dan ledger milik satu sesi dari satu penyewa.
+
+Blok `tenants` memilih batasnya: `cwd` memakai direktori kerja (default),
+`session` menjadikan tiap sesi penyewa sendiri, `none` mengembalikan satu
+penyewa bersama untuk seluruh host.
+
+- Terima: dua penyewa tidak melihat cost ledger, worklog, gate log, atau
+  lineage satu sama lain; budget advisor hanya menghitung booking penyawanya;
+  `fable51 inspect` menyebut nama penyawanya; registry penyewa tidak tumbuh
+  tanpa batas; dua sesi satu penyewa berbagi state tenant tetapi tidak
+  episode.
+- Status: terpenuhi (`src/state/tenant.ts`, `test/unit/tenant-isolation.spec.ts`).
+
 ### FR-15 Paket bisa dipasang
 
 `package.json` harus memuat `dsh.bundle.patch`, menaruh paket dsh di
@@ -374,6 +398,7 @@ menggabungkan config parsial di atas default lengkap, lalu memvalidasi.
 | `hitl` | `requireOnIrreversible true`, `requireOnExternal true`, `requireAboveCost 500000` |
 | `observability` | `traceLevel stage`, `logFormat line` |
 | `registry` | `policies []` |
+| `tenants` | isolasi penyewa | `mode cwd`, `defaultKey default`, `maxTenants 64` |
 
 Aturan validasi yang paling sering menabrak operator:
 
@@ -425,8 +450,9 @@ dipanggil.
 | `snapshots` | 256 | FIFO |
 | `turnDistances` | 64 atau `convergenceTurns`, mana yang lebih besar | buang tertua |
 
-Semua state hidup di satu instance `ctx.fable51` per host. Lihat §13 untuk
-konsekuensinya.
+Semua state hidup di satu instance `ctx.fable51` per host, tapi dibagi per
+penyewa: ring di atas berlaku per penyewa, dan jumlah penyewanya sendiri
+dibatasi `tenants.maxTenants` (default 64). Lihat §13 untuk konsekuensinya.
 
 ## 11. Persyaratan non-fungsional
 
@@ -448,7 +474,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
 | Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
-| Suite test | `pnpm test` | 289 test, 98 suite, 289 lulus, 0 gagal | lulus |
+| Suite test | `pnpm test` | 302 test, 99 suite, 302 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |
@@ -462,25 +488,33 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Antrean bandwidth mengikat di host nyata | sesi headless: 2 lalu 5 tool `fable51_*` murni paralel | peak 2 lalu peak 4 pada cap 4 | lulus |
 | Tool murni boleh paralel | `test/unit/concurrency.spec.ts` | 64 tool paralel, 28 eksklusif | lulus |
 | Sweep semua tool di host nyata | `test/unit/sweep.spec.ts` | 92 dari 92 tool menerima argumen schema-nya, 0 error host | lulus |
+| Isolasi penyewa | `test/unit/tenant-isolation.spec.ts` | ledger, worklog, gate log, dan lineage terpisah per penyewa; 13 tes | lulus |
 | Grup paralel tidak membuat host macet | `test/unit/progress-bandwidth.spec.ts` | desain lama hang >220 detik, desain baru 38 detik | lulus |
 
 Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
 
 ## 13. Batas, risiko, dan salah pakai
 
-1. **Jejak audit per host, counter run per session.** Worklog, ledger, cache,
-   snapshot, dan lineage dipakai bersama oleh semua session di host, karena
-   audit jangka panjang memang di level host. Counter yang menegakkan run
-   (budget token, jatah fork/merge, escalation ladder, replan count, effort
-   tier, convergence window) sudah di-key per session: `turn/start` dari satu
-   session hanya me-reset budget session itu sendiri. Identitas session
-   dialirkan dari host lewat `Agent.session.id`, `ToolExecution.agent`,
-   `GenerateOptions.sessionId`, dan objek session lifecycle.
-2. **Bukan sandbox dan bukan approval mechanism.** Jangan jadikan
+1. **Jejak audit per penyewa, counter run per session.** Worklog, ledger,
+   cache, snapshot, dan lineage di-key per penyewa, jadi satu project tidak
+   membaca milik project lain. Counter yang menegakkan run (budget token,
+   jatah fork/merge, escalation ladder, replan count, effort tier,
+   convergence window) di-key per session: `turn/start` dari satu session
+   hanya me-reset budget session itu sendiri. Identitas session dialirkan dari
+   host lewat `Agent.session.id`, `ToolExecution.agent`,
+   `GenerateOptions.sessionId`, dan objek session lifecycle; penyewa diambil
+   dari `session.header.cwd`, dan tampilan session yang hanya membawa id
+   mencari penyawanya lewat registry yang diisi lifecycle sesi.
+2. **Penyewa yang keluar dari ridi kehilangan history-nya.** Registry
+   penyewa dibatasi `maxTenants` (default 64) dan evict yang tertua.
+   Project yang kembali setelah di-evict mulai dari nol, bukan melanjutkan
+   riwayat setengah jadi. Naikkan `maxTenants` kalau satu host melayani
+   lebih dari 64 project aktif.
+3. **Bukan sandbox dan bukan approval mechanism.** Jangan jadikan
    `sandbox-boundaries` atau `human-in-the-loop` sebagai satu-satunya kontrol.
    Keduanya hanya berjalan bila model memanggil tool, dan yang pertama hanya
    membandingkan string path.
-3. **Cap bandwidth itu per session, bukan cap host.** Satu session maksimal
+4. **Cap bandwidth itu per session, bukan cap host.** Satu session maksimal
    menjalankan `maxConcurrentPasses` pass paralel, tapi dua session di host
    yang sama masing-masing mendapat jatah penuh. Host punya cap sendiri
    (`maxParallelToolCalls`, default 10); yang lebih kecil dari dua cap itu
@@ -494,18 +528,19 @@ Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
    2026-10-20 lewat `dsh --profile fable-test headless`: envelope asli
    `fable51_chain-vs-tree` diterima, dan spec 4 serta 55 terverifikasi lewat
    jalur yang sama.
-4. **Tidak ada CI dan tidak ada lockfile.** Artefak yang dijalankan host adalah
+5. **Tidak ada CI dan tidak ada lockfile.** Artefak yang dijalankan host adalah
    hasil build lokal. `lib/` tidak masuk git.
-5. **Registry tidak memvalidasi argumen input.** Kesalahan schema terdeteksi
+6. **Registry tidak memvalidasi argumen input.** Kesalahan schema terdeteksi
    saat return, bukan saat registrasi.
-6. **State episode sudah per session, tapi jejak audit masih per host.**
-   Worklog, cost ledger, cache, snapshot store, dan lineage dibagi semua
-   session di satu host; counter yang menegakkan run sudah di-key per session.
-   Lihat §7.3 dan README "Known limits".
-7. **Drift dokumentasi.** Sudah tertutup: README memakai namespace `fable51_`
+7. **Jejak audit per penyewa, bukan per host.** Sudah tertutup: worklog,
+   cost ledger, cache, snapshot store, dan lineage di-key per penyewa
+   (FR-16), jadi satu project di satu host tidak membaca milik project lain.
+   Yang tersisa: registry penyewa dibatasi, jadi project yang keluar dari ridi
+   kehilangan history-nya. Lihat §7.3 dan README "Batas penyewa".
+8. **Drift dokumentasi.** Sudah tertutup: README memakai namespace `fable51_`
    dan menyebut 9 spec hidup sebagai method service (6 dipicu hook, 3 dipanggil
    tool), sesuai §7.3.
-8. **Aturan encoding.** Terpenuhi sekarang: 0 pelanggaran pada seluruh berkas
+9. **Aturan encoding.** Terpenuhi sekarang: 0 pelanggaran pada seluruh berkas
    tracked. Lihat FR-14.
 
 ## 14. Pertanyaan terbuka
@@ -536,3 +571,4 @@ Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
 | 1 | 2026-10-20 | Ditulis ulang sebagai PRD as-built dari commit `3b701d6`: angka terverifikasi, pembagian cakupan 90/8/2, kontrak config dan envelope, bukti penerimaan, serta batas yang diketahui |
 | 2 | 2026-10-20 | Cakupan spec 100/100 (spec 4 dan 55 diisi), 92 tool, 5 hook, episode per session, CLI `fable51 inspect` dan `advise-budget`, jalur agent loop terverifikasi end-to-end, panduan operator dipindah ke `HOWTOUSE.md` |
 | 3 | 2026-10-21 | Advisor diverifikasi dengan cost ledger terisi, dan jalur antrean bandwidth dikarakterisasi sebagai tidak terjangkau host dsh 0.2.0-rc.2 |
+| 4 | 2026-10-21 | Isolasi penyewa: worklog, gate log, cost ledger, lineage, snapshot, dan cache dipisah per penyewa (FR-16) |

@@ -208,6 +208,7 @@ pecahan. Semuanya jadi `ConfigError` dengan path field yang tepat.
 | `hitl` | 27 | `requireOnIrreversible true`, `requireOnExternal true`, `requireAboveCost 500000` |
 | `observability` | 24, 79 | `traceLevel stage`, `logFormat line` |
 | `registry` | 100 | `policies []` |
+| `tenants` | isolasi penyewa | `mode cwd`, `defaultKey default`, `maxTenants 64` |
 
 Contoh config partial, ditulis di blok `config:` pada `cordis.patch.yml`:
 
@@ -297,7 +298,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan seluruh suite (sekarang 289 test di 98 suite) dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 302 test di 99 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -330,7 +331,7 @@ dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
 
 **Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
-`pnpm test` menjalankan 289 test di 98 suite, semuanya lulus; `pnpm typecheck`
+`pnpm test` menjalankan 302 test di 99 suite, semuanya lulus; `pnpm typecheck`
 exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
@@ -411,5 +412,22 @@ gagal di level host, dan semua menjawab dengan verdict yang diizinkan
 envelope. Sweep ini yang menemukan dua pembaca live state yang menyajikan
 jawaban basi, dan sekarang jadi gerbang permanen: `pnpm test` memanggilnya
 setiap kali.
+
+**Diverifikasi bahwa penyewa terpisah di host nyata (2026-10-21):** satu sesi
+headless di direktori `/home/administrator` memanggil `fable51_inspect`, dan
+lapisan `tenant` di jawabannya berisi `/home/administrator`: penyewa diambil
+dari direktori kerja sesi, bukan dari id sesi. Direktori itu dibaca dari
+header sesi (`session.header.cwd`), tempat host sendiri membacanya
+(`packages/core/tools/src/ptc.ts` memakai `exec.agent.session.header.cwd`).
+Tampilan langsung yang hanya membawa id sesi mencari penyawanya lewat registry
+yang diisi lifecycle sesi, jadi tool yang dipanggil model tetap mendarat di
+penyewa yang benar.
+
+**Diverifikasi bahwa satu penyewa tidak melihat yang lain
+(2026-10-21):** `test/unit/tenant-isolation.spec.ts` menjalankan 13 kasus:
+ledger, worklog, gate log, dan lineage terpisah; panggilan tool di satu
+penyewa tidak membebani anggaran penyewa lain; budget advisor hanya menghitung
+booking pemanggilnya; dua sesi satu penyewa berbagi state tenant tapi tidak
+episode; dan registry penyewa tidak tumbuh melewati `maxTenants`.
 
 **Belum diverifikasi:** tidak ada lagi butir yang tersisa.

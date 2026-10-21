@@ -26,7 +26,7 @@ Status di host ini, diverifikasi 2026-10-20:
 | Hook | 5 (`agent/pre-step`, `tools/execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget` |
-| Test | 283 di 96 suite, semuanya lulus |
+| Test | 302 di 99 suite, semuanya lulus |
 | Lisensi | MIT |
 
 Cakupan 100 spec di `sumber100specs.md`:
@@ -138,6 +138,29 @@ merge jadi tidak ada lalu terbaca aktif.
 | `hitl` | 27 | `requireOnIrreversible true`, `requireOnExternal true`, `requireAboveCost 500000` |
 | `observability` | 24, 79 | `traceLevel stage`, `logFormat line` |
 | `registry` | 100 | `policies []` |
+| `tenants` | isolasi penyewa | `mode cwd`, `defaultKey default`, `maxTenants 64` |
+
+## Batas penyewa
+
+Satu host bisa melayani beberapa project sekaligus. Semua state yang
+dibagikan antar sesi (worklog, gate log, cost ledger, lineage pass, snapshot,
+cache idempotency) **dipisah per penyewa**, supaya satu project tidak
+membaca belanja atau riwayat project lain, dan budget advisor tidak menghitung
+rekomendasi dari booking yang tidak pernah dibuat pemanggilnya.
+
+Penyewa diambil dari direktori kerja sesi, karena itu batas yang sudah
+digambar host saat membuat sesi. Sesi tanpa direktori masuk ke penyewa
+`default`. Blok `tenants` mengganti batasnya:
+
+| `mode` | Batas |
+|---|---|
+| `cwd` (default) | direktori kerja sesi |
+| `session` | tiap sesi adalah penyewa sendiri |
+| `none` | satu penyewa bersama untuk seluruh host, perilaku sebelum isolasi |
+
+`fable51 inspect` menyebut penyawanya, jadi pemisahan itu terlihat, bukan
+halang. Registry penyewa dibatasi `maxTenants`, dan penyewa yang keluar dari
+ridi itu di-evict: history-nya hilang, bukan bocor ke penyewa lain.
 
 ## Yang menahan vs yang cuma lapor
 
@@ -202,7 +225,7 @@ pnpm build       # emit lib/, termasuk lib/cli.js
 Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
 0. Dengan visualizer, budget advisor, CLI, episode per-session, spec 4 dan 55,
 validasi `--format` di CLI, advisor dengan ledger terisi, dan kontrak peer
-dependensi: **289 test di 98 suite lulus**.
+dependensi: **302 test di 99 suite lulus**.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
