@@ -23,6 +23,14 @@ export interface ToolEnv {
    * episode. DEFAULT_SESSION when the host named no session.
    */
   readonly sessionKey: string
+  /**
+   * The tenant scope this call belongs to.
+   *
+   * The scope key composes the tenant with the session, so a tool that
+   * spends a budget and the hook that resets it land on the same run's
+   * episode, and a tool in one tenant cannot read another tenant's ledger.
+   */
+  readonly scopeKey: string
 }
 
 /** Uniform tool result: never void, always typed (PRD §3.3, spec 13). */
@@ -113,21 +121,28 @@ export function defineTool<T>(spec: ToolSpec<T>, env: ToolEnv): ToolDefinition {
       let rerun = false
       // The session key is per call: the env is shared by every tool, but the
       // session belongs to the execution, not to the registration.
-      const callEnv: ToolEnv = { service: env.service, sessionKey: sessionKeyFromExec(exec) }
+      const scopeKey = env.service.scopeKeyOfExec(exec)
+      const callEnv: ToolEnv = {
+        service: env.service,
+        sessionKey: sessionKeyFromExec(exec),
+        scopeKey,
+      }
       try {
         if (spec.effectful === true) {
           output = await spec.execute(args, callEnv)
         } else {
           // spec 19/43: idempotency, same input hash + same spec + same config
           // fingerprint replays the cached output instead of re-running.
-          const key = env.service.cache.key(args, spec.spec, fingerprint(env.service.config))
-          const hit = env.service.cache.get(key)
+          // The cache belongs to the tenant: one tenant's answer is never served to another.
+          const cache = env.service.cacheOf(scopeKey)
+          const key = cache.key(args, spec.spec, fingerprint(env.service.config))
+          const hit = cache.get(key)
           if (hit !== undefined) {
             rerun = true
             output = hit.output
           } else {
             output = await spec.execute(args, callEnv)
-            env.service.cache.set(key, output)
+            cache.set(key, output)
           }
         }
       } catch (error) {

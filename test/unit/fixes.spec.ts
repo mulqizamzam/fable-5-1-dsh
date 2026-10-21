@@ -13,6 +13,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { PolicyRegistry } from '../../src/state/registry.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 async function setup(): Promise<Context> {
@@ -96,12 +97,12 @@ describe('BUG 3, spec 5 verification-gates must be fail-loud, not forgeable', ()
       const forgedOut = (forged as unknown as { value: { ok: boolean; output: { error: string } } }).value
       assert.equal(forgedOut.ok, false, 'a gate with no expected/actual outcome must not pass')
       assert.equal(forgedOut.output.error, 'check must be a non-empty string')
-      const before = ctx.fable51.gateLog.length
+      const before = ctx.fable51.gateLogOf(DEFAULT_SCOPE).length
       const half = await call(ctx, 'verification-gates', { check: 'c', cmd: 'run', expected: 'A' })
       const halfOut = (half as unknown as { value: { ok: boolean; output: { error: string } } }).value
       assert.equal(halfOut.ok, false, 'a gate without an observed outcome must not pass')
       assert.equal(halfOut.output.error, 'actual must be a non-empty string')
-      assert.equal(ctx.fable51.gateLog.length, before, 'no gate may be recorded from incomplete args')
+      assert.equal(ctx.fable51.gateLogOf(DEFAULT_SCOPE).length, before, 'no gate may be recorded from incomplete args')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -160,15 +161,15 @@ describe('GAP 1, spec 6 effort-escalation on search/multihop signals', () => {
   it('escalates the effort tier when the pre-step message carries an escalation signal', async () => {
     const ctx = await setup()
     try {
-      const before = ctx.fable51.episode(DEFAULT_SESSION).effortTier
+      const before = ctx.fable51.episode(DEFAULT_SCOPE).effortTier
       await (ctx as unknown as { waterfall(t: unknown, n: string, p: unknown, next: () => Promise<unknown>): Promise<unknown> })
         .waterfall(ctx, 'agent/pre-step', {
           messages: [{ role: 'user', content: 'this task needs a multihop search across sources' }],
           turn: 1,
           step: 1,
         }, async () => ({ kind: 'enter' }))
-      assert.notEqual(ctx.fable51.episode(DEFAULT_SESSION).effortTier, before, 'an escalation signal must raise the tier')
-      assert.ok(ctx.fable51.worklog.some((w) => w.check === 'effort escalation'), 'the escalation must be observable')
+      assert.notEqual(ctx.fable51.episode(DEFAULT_SCOPE).effortTier, before, 'an escalation signal must raise the tier')
+      assert.ok(ctx.fable51.worklogOf(DEFAULT_SCOPE).some((w) => w.check === 'effort escalation'), 'the escalation must be observable')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -183,8 +184,8 @@ describe('GAP 2, spec 15 pass labeling: parallel, sequential, interleaved are di
       await call(ctx, 'reasoning-lineage', { passId: 'other' })
       const res = await call(ctx, 'reasoning-dag', { passId: 'join', deps: ['root', 'other'] })
       assert.equal(res.isError, false, 'multi-dep recording is the service surface under test')
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).passLabels.get('root'), 'sequential')
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).passLabels.get('join'), 'parallel')
+      assert.equal(ctx.fable51.episode(DEFAULT_SCOPE).passLabels.get('root'), 'sequential')
+      assert.equal(ctx.fable51.episode(DEFAULT_SCOPE).passLabels.get('join'), 'parallel')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -199,7 +200,7 @@ describe('GAP 2, spec 15 pass labeling: parallel, sequential, interleaved are di
       const stream = await (ctx as unknown as { waterfall(t: unknown, n: string, o: unknown, next: () => AsyncIterable<unknown>): AsyncIterable<unknown> })
         .waterfall(ctx, 'llm/stream', { model: 'fix-test' }, source)
       for await (const chunk of stream) void chunk
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).passLabels.get('llm:fix-test'), 'interleaved')
+      assert.equal(ctx.fable51.episode(DEFAULT_SCOPE).passLabels.get('llm:fix-test'), 'interleaved')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -220,13 +221,13 @@ describe('GAP 3, spec 58 convergence: small deltas for N turns AND no new eviden
         for await (const chunk of stream) void chunk
       }
       await drive()
-      assert.equal(ctx.fable51.converged(DEFAULT_SESSION).converged, false, 'one stable turn is not convergence')
+      assert.equal(ctx.fable51.converged(DEFAULT_SCOPE).converged, false, 'one stable turn is not convergence')
       await drive()
       await drive()
-      const stable = ctx.fable51.converged(DEFAULT_SESSION)
+      const stable = ctx.fable51.converged(DEFAULT_SCOPE)
       assert.equal(stable.converged, true, 'N stable turns with no new evidence converge')
       ctx.emit('tools/result', { name: 'fable51_context-management', arguments: {} } as never, { content: [{ type: 'text', text: 'fresh artifact' }], isError: false } as never)
-      assert.equal(ctx.fable51.converged(DEFAULT_SESSION).converged, false, 'new evidence blocks convergence')
+      assert.equal(ctx.fable51.converged(DEFAULT_SCOPE).converged, false, 'new evidence blocks convergence')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -259,8 +260,8 @@ describe('GAP 5, specs 10/18 handoff + rollback to the last verified checkpoint'
     try {
       await call(ctx, 'reasoning-checkpoint', { passId: 'cp-1', state: { turn: 1 } })
       ctx.emit('session/disposed', {} as never)
-      const handoffId = [...ctx.fable51.snapshots.ids()].reverse().find((id) => id.startsWith('session-handoff'))
-      const handoff = handoffId ? ctx.fable51.snapshots.get(handoffId) : undefined
+      const handoffId = [...ctx.fable51.snapshotsOf(DEFAULT_SCOPE).ids()].reverse().find((id) => id.startsWith('session-handoff'))
+      const handoff = handoffId ? ctx.fable51.snapshotsOf(DEFAULT_SCOPE).get(handoffId) : undefined
       assert.ok(handoff, 'session disposal must persist the handoff state')
       assert.ok(Array.isArray(handoff.data.stageMap), 'the handoff carries the stage map')
       assert.equal(typeof handoff.data.lastHash, 'string')

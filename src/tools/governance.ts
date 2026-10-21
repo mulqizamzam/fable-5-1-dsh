@@ -66,7 +66,7 @@ export function governanceTools(): ToolSpec[] {
           at: { type: 'number' },
         },
       },
-      execute(args, { service }): WorklogEntry {
+      execute(args, { service, scopeKey }): WorklogEntry {
         const { stage, output, check, verdict, unverified } = args as {
           stage: string
           output: string
@@ -81,7 +81,7 @@ export function governanceTools(): ToolSpec[] {
           verdict,
           unverified: unverified ?? [],
           at: Date.now(),
-        })
+        }, scopeKey)
       },
     },
     {
@@ -182,7 +182,7 @@ export function governanceTools(): ToolSpec[] {
           epsilon: { type: 'number' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { anchor, output, epsilon } = args as { anchor: string; output: string; epsilon?: number }
         // The threshold is both compared against and echoed into the declared
         // number field, so a string epsilon would be coerced and returned as-is.
@@ -220,7 +220,7 @@ export function governanceTools(): ToolSpec[] {
           kept: { type: 'number' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { liveIds, keepLastN } = args as { liveIds: string[]; keepLastN: number }
         // Same hazard as keepLastN below: an omitted liveIds is an empty keep-set,
         // so a malformed call collects the entire lineage.
@@ -234,8 +234,8 @@ export function governanceTools(): ToolSpec[] {
         }
         // A negative count is a typo, not a request to keep nothing.
         if (keepLastN < 0) throw new Error('keepLastN must not be negative')
-        const dropped = service.lineage.gc(liveIds, keepLastN)
-        return { dropped: [...dropped], kept: service.lineage.size() }
+        const dropped = service.lineageOf(scopeKey).gc(liveIds, keepLastN)
+        return { dropped: [...dropped], kept: service.lineageOf(scopeKey).size() }
       },
     },
     {
@@ -319,7 +319,7 @@ export function governanceTools(): ToolSpec[] {
           toModel: { type: 'string' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { passId, fromModel, toModel, outputBefore, outputAfter } = args as {
           passId: string
           fromModel: string
@@ -340,7 +340,7 @@ export function governanceTools(): ToolSpec[] {
             verdict: 'discarded',
             unverified: [`pass ${passId} equivalence across ${fromModel} → ${toModel}`],
             at: Date.now(),
-          })
+          }, scopeKey)
         }
         return { migrated: true, divergence, fromModel, toModel }
       },

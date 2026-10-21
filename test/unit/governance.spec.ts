@@ -6,6 +6,7 @@
  * mock's.
  */
 import { describe, it } from 'node:test'
+import type { WorklogEntry } from '../../src/types/log.ts'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -15,6 +16,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { governanceTools } from '../../src/tools/governance.ts'
 import { fingerprint } from '../../src/state/cache.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import type { PassScore, ReasoningPass } from '../../src/types/pass.ts'
 
 interface Envelope {
@@ -71,8 +73,8 @@ function line(id: string, parentId: string | null): ReasoningPass {
 }
 
 /** The tools/result observer logs a `tool:<name>` line per call, so worklog assertions are stage-scoped. */
-function worklogAt(ctx: Context, stage: string): readonly (typeof ctx.fable51.worklog)[number][] {
-  return ctx.fable51.worklog.filter((entry) => entry.stage === stage)
+function worklogAt(ctx: Context, stage: string): readonly WorklogEntry[] {
+  return ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((entry) => entry.stage === stage)
 }
 
 describe('spec 13, worklog-format', () => {
@@ -181,7 +183,7 @@ describe('spec 91, pass-merge-idempotency', () => {
       const replayed = await run(ctx, 'pass-merge-idempotency', { outputs: [a, b] })
       assert.equal(replayed.rerun, true)
       assert.deepEqual(replayed.output.merged, forward.output.merged)
-      assert.equal(ctx.fable51.cache.size, 2, 'two distinct input orders are two distinct cache keys')
+      assert.equal(ctx.fable51.cacheOf(DEFAULT_SCOPE).size, 2, 'two distinct input orders are two distinct cache keys')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -272,16 +274,16 @@ describe('spec 94, reasoning-garbage-collection', () => {
   it('drops passes no live id or keepLastN retains', async () => {
     const ctx = await setup()
     try {
-      ctx.fable51.lineage.record(line('a', null))
-      ctx.fable51.lineage.record(line('b', 'a'))
-      ctx.fable51.lineage.record(line('c', 'b'))
-      ctx.fable51.lineage.record(line('z', null))
+      ctx.fable51.lineageOf(DEFAULT_SCOPE).record(line('a', null))
+      ctx.fable51.lineageOf(DEFAULT_SCOPE).record(line('b', 'a'))
+      ctx.fable51.lineageOf(DEFAULT_SCOPE).record(line('c', 'b'))
+      ctx.fable51.lineageOf(DEFAULT_SCOPE).record(line('z', null))
       const result = await run(ctx, 'reasoning-garbage-collection', { liveIds: ['c'], keepLastN: 0 })
       assert.equal(result.spec, '94')
       assert.equal(result.rerun, false)
       assert.deepEqual(result.output.dropped, ['z'])
       assert.equal(result.output.kept, 3)
-      assert.equal(ctx.fable51.lineage.get('z'), undefined)
+      assert.equal(ctx.fable51.lineageOf(DEFAULT_SCOPE).get('z'), undefined)
       const replayed = await run(ctx, 'reasoning-garbage-collection', { liveIds: ['c'], keepLastN: 0 })
       assert.equal(replayed.rerun, false, 'gc is effectful: each call re-evaluates the lineage instead of replaying')
       assert.deepEqual(replayed.output.dropped, [], 'the second run has nothing left to drop')
@@ -293,13 +295,13 @@ describe('spec 94, reasoning-garbage-collection', () => {
   it('keeps the last N passes when nothing is live', async () => {
     const ctx = await setup()
     try {
-      ctx.fable51.lineage.record(line('p1', null))
-      ctx.fable51.lineage.record(line('p2', null))
-      ctx.fable51.lineage.record(line('p3', null))
+      ctx.fable51.lineageOf(DEFAULT_SCOPE).record(line('p1', null))
+      ctx.fable51.lineageOf(DEFAULT_SCOPE).record(line('p2', null))
+      ctx.fable51.lineageOf(DEFAULT_SCOPE).record(line('p3', null))
       const result = await run(ctx, 'reasoning-garbage-collection', { liveIds: [], keepLastN: 1 })
       assert.deepEqual(result.output.dropped, ['p1', 'p2'])
       assert.equal(result.output.kept, 1)
-      assert.equal(ctx.fable51.lineage.size(), 1)
+      assert.equal(ctx.fable51.lineageOf(DEFAULT_SCOPE).size(), 1)
     } finally {
       await ctx.fiber.dispose()
     }

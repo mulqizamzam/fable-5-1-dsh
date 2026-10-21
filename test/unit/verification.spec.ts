@@ -15,6 +15,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { fingerprint } from '../../src/state/cache.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 
 interface Envelope {
   readonly ok: boolean
@@ -87,16 +88,16 @@ describe('spec 5, verification-gates', () => {
       assert.equal(output.cmd, 'node --test')
       assert.equal(typeof output.at, 'number')
 
-      const recorded = ctx.fable51.gateLog.at(-1)
+      const recorded = ctx.fable51.gateLogOf(DEFAULT_SCOPE).at(-1)
       assert.deepEqual(recorded, { gate: 'tests', cmd: 'node --test', expected: 'pass', actual: 'pass', pass: true, at: recorded?.at })
 
       const second = await call(ctx, 'verification-gates', args)
       // Effectful: the old unconditional cache replayed the first answer, so a rerun recorded no second gate result.
       assert.equal(second.rerun, false)
       assert.equal((second.output as { pass: boolean }).pass, true)
-      assert.equal(ctx.fable51.gateLog.length, 2, 'each call records its own gate result')
+      assert.equal(ctx.fable51.gateLogOf(DEFAULT_SCOPE).length, 2, 'each call records its own gate result')
       assert.deepEqual(
-        ctx.fable51.gateLog.map((g) => ({ ...g, at: 0 })),
+        ctx.fable51.gateLogOf(DEFAULT_SCOPE).map((g) => ({ ...g, at: 0 })),
         [first.output, second.output].map((o) => ({ ...(o as Record<string, unknown>), at: 0 })),
         'both gate records must describe the same comparison',
       )
@@ -214,7 +215,7 @@ describe('spec 19, idempotency', () => {
       const output = first.output as { hash: string; firstSeen: boolean }
       assert.equal(output.firstSeen, true)
       assert.match(output.hash, /^sha256:[0-9a-f]{64}$/)
-      assert.equal(output.hash, ctx.fable51.cache.key({ stage: 'verify', files: 3 }, 'idempotency-check', 'none'))
+      assert.equal(output.hash, ctx.fable51.cacheOf(DEFAULT_SCOPE).key({ stage: 'verify', files: 3 }, 'idempotency-check', 'none'))
 
       // The tool reads the cache to answer firstSeen, so it is effectful: an
       // identical call re-executes and reports the input was already fingerprinted.
@@ -226,8 +227,8 @@ describe('spec 19, idempotency', () => {
       const other = await call(ctx, 'idempotency', { input: { stage: 'verify', files: 4 } })
       assert.equal((other.output as { hash: string }).hash !== output.hash, true)
 
-      const known = ctx.fable51.cache.key('seen-before', 'idempotency-check', 'none')
-      ctx.fable51.cache.set(known, known)
+      const known = ctx.fable51.cacheOf(DEFAULT_SCOPE).key('seen-before', 'idempotency-check', 'none')
+      ctx.fable51.cacheOf(DEFAULT_SCOPE).set(known, known)
       const seen = await call(ctx, 'idempotency', { input: 'seen-before' })
       assert.equal((seen.output as { hash: string; firstSeen: boolean }).firstSeen, false)
     } finally {

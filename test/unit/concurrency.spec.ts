@@ -10,6 +10,7 @@
  * stale picture of a running bundle.
  */
 import { describe, it } from 'node:test'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -99,7 +100,7 @@ describe('tool concurrency safety', () => {
       assert.equal(first.rerun, false, 'the first call is not a replay')
 
       // Something changes the state the inspector reports.
-      ctx.fable51.recordCost({ stage: 'tool:baru', tokens: 999_999, latencyMs: 1, riskWeight: 0, at: Date.now() })
+      ctx.fable51.recordCost({ stage: 'tool:baru', tokens: 999_999, latencyMs: 1, riskWeight: 0, at: Date.now() }, DEFAULT_SCOPE)
 
       const second = await call(ctx, 'fable51_inspect', { format: 'json' })
       assert.equal(second.rerun, false, 'a live-state reader must never replay a cached answer')
@@ -117,7 +118,7 @@ describe('tool concurrency safety', () => {
       const first = await call(ctx, 'fable51_budget-advisor', { taskClass: 'search' })
       const sizeBefore = (first.output as { sampleSize: number }).sampleSize
 
-      ctx.fable51.recordCost({ stage: 'tool:fable51_chain-vs-tree', tokens: 50_000, latencyMs: 10, riskWeight: 0, at: Date.now() })
+      ctx.fable51.recordCost({ stage: 'tool:fable51_chain-vs-tree', tokens: 50_000, latencyMs: 10, riskWeight: 0, at: Date.now() }, DEFAULT_SCOPE)
 
       const second = await call(ctx, 'fable51_budget-advisor', { taskClass: 'search' })
       assert.equal(second.rerun, false, 'the advisor must not replay a cached recommendation')

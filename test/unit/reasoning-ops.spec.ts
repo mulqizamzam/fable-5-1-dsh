@@ -3,6 +3,7 @@
  * 84, 85, 86, 87, 88, 89, 90. Host: real Cordis + real dsh services.
  */
 import { describe, it } from 'node:test'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -138,7 +139,7 @@ describe('reasoning-ops tools', () => {
       const a = await call(ctx, 'fable51_pass-observability', { passId: 'p1', tokens: 10, verdict: 'contributed' })
       const b = await call(ctx, 'fable51_pass-observability', { passId: 'p1', tokens: 10, verdict: 'contributed' })
       assert.equal(a.output.traceId, b.output.traceId)
-      assert.ok(ctx.fable51.worklog.some((w) => w.stage === 'pass:p1'), 'observability writes its one line')
+      assert.ok(ctx.fable51.worklogOf(DEFAULT_SCOPE).some((w) => w.stage === 'pass:p1'), 'observability writes its one line')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -217,7 +218,7 @@ describe('reasoning-ops tools', () => {
         id: 'a', spec: 't', parentId: null, inHash: 'sha256:a', outHash: 'sha256:a', deps: [],
         verdict: 'contributed', score: svc.score({ evidence: 1, coherence: 0, coverage: 0, contradiction: 0 }),
         startedAt: 0, endedAt: 0, tokens: 0, latencyMs: 0, unverified: [],
-      })
+      }, DEFAULT_SCOPE)
       const out = await call(ctx, 'fable51_pass-lineage-prune', { liveIds: ['a'] })
       assert.ok(!(out.output.dropped as string[]).includes('a'), 'live pass survives prune')
     } finally {

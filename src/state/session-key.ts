@@ -50,3 +50,35 @@ export function sessionKeyFromOptions(options: unknown): string {
   if (typeof options !== 'object' || options === null) return DEFAULT_SESSION
   return readId((options as { sessionId?: unknown }).sessionId) ?? DEFAULT_SESSION
 }
+
+/**
+ * The working directory a session was created in, however the surface
+ * spells it.
+ *
+ * This is the tenant boundary: a host already draws it when it creates a
+ * session, and two sessions in different directories are two users of the
+ * host even when they share it.
+ */
+export function cwdOfSession(session: unknown): string | undefined {
+  if (typeof session !== 'object' || session === null) return undefined
+  // The live session carries the directory on its HEADER, which is where the
+  // host reads it from too (packages/core/tools/src/ptc.ts reads
+  // exec.agent.session.header.cwd). A flat `cwd` is accepted as well, for a
+  // surface that spells it that way.
+  const header = (session as { header?: unknown }).header
+  const fromHeader = typeof header === 'object' && header !== null
+    ? (header as { cwd?: unknown }).cwd
+    : undefined
+  const flat = (session as { cwd?: unknown }).cwd
+  const cwd = fromHeader ?? flat
+  return typeof cwd === 'string' && cwd.length > 0 ? cwd : undefined
+}
+
+/** The working directory behind a tool execution: `exec.agent.session.cwd`. */
+export function cwdOfExec(exec: unknown): string | undefined {
+  if (typeof exec !== 'object' || exec === null) return undefined
+  const agent = (exec as { agent?: unknown }).agent
+  if (typeof agent !== 'object' || agent === null) return undefined
+  const session = (agent as { session?: unknown }).session
+  return cwdOfSession(session)
+}

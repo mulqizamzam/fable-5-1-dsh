@@ -82,12 +82,12 @@ export function escalationTools(): ToolSpec[] {
           count: { type: 'number' },
         },
       },
-      execute(_args, { service, sessionKey }) {
+      execute(_args, { service, scopeKey }) {
         // The service counter is the source of truth: the argument is
         // advisory only, so a caller cannot under- or over-report the budget.
         // The counter is this session's: another run's replans must not count
         // against this one.
-        const { count, escalate } = service.replan(sessionKey)
+        const { count, escalate } = service.replan(scopeKey)
         const max = service.config.budget.maxReplans
         return {
           allowed: count <= max,
@@ -118,7 +118,7 @@ export function escalationTools(): ToolSpec[] {
           reason: { type: 'string' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { action, irreversible, external, estimatedCost } = args as Partial<ApprovalRequest>
         // Fail closed: an undeclared risk flag is itself the risk (spec 27).
         const hasIrreversible = typeof irreversible === 'boolean'
@@ -160,12 +160,12 @@ export function escalationTools(): ToolSpec[] {
           ladder: { type: 'array', items: { type: 'string', enum: ['retry', 'replan', 'downgrade', 'ask'] } },
         },
       },
-      execute(args, { service, sessionKey }) {
+      execute(args, { service, scopeKey }) {
         const { failed } = args as { failed: boolean }
         // A truthy non-boolean would be read as a success: the ladder would not
         // advance on a failure that happened.
         if (typeof failed !== 'boolean') throw new Error('failed must be a boolean')
-        const rung = failed ? service.nextRung(sessionKey) : rungAt(service.episode(sessionKey).rung)
+        const rung = failed ? service.nextRung(scopeKey) : rungAt(service.episode(scopeKey).rung)
         return { rung, ladder: [...LADDER] }
       },
     },
@@ -229,7 +229,7 @@ export function escalationTools(): ToolSpec[] {
           snapshotId: { type: 'string' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { passId, elapsedMs } = args as { passId: string; elapsedMs: number }
         // A non-finite elapsed would read as "within the deadline": refuse it instead.
         if (typeof elapsedMs !== 'number' || !Number.isFinite(elapsedMs)) {
@@ -239,7 +239,7 @@ export function escalationTools(): ToolSpec[] {
         if (elapsedMs <= deadline) {
           return { passed: true, elapsedMs }
         }
-        const snapshot = service.snapshots.create(`${passId}-timeout`, {
+        const snapshot = service.snapshotsOf(scopeKey).create(`${passId}-timeout`, {
           passId,
           elapsedMs,
           verdict: 'unverified',
@@ -251,7 +251,7 @@ export function escalationTools(): ToolSpec[] {
           verdict: 'discarded',
           unverified: [`pass ${passId} timed out after ${elapsedMs}ms`],
           at: Date.now(),
-        })
+        }, scopeKey)
         return { passed: false, elapsedMs, snapshotId: snapshot.id }
       },
     },
@@ -275,7 +275,7 @@ export function escalationTools(): ToolSpec[] {
           abort: { type: 'boolean' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { attempt } = args as { attempt: number }
         // attempt < 1 or fractional would buy a longer backoff for less work.
         if (typeof attempt !== 'number' || !Number.isInteger(attempt) || attempt < 1) {

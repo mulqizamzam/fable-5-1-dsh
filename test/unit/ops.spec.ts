@@ -7,6 +7,7 @@
  * worklog effect is isolated by its stage rather than by position or count.
  */
 import { describe, it } from 'node:test'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
@@ -52,7 +53,7 @@ function envelope(result: RunResult): Envelope {
 }
 
 function worklogFor(ctx: Context, stage: string): Array<{ output: string; check: string; verdict: string; unverified: readonly string[] }> {
-  return ctx.fable51.worklog.filter((entry) => entry.stage === stage)
+  return ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((entry) => entry.stage === stage)
 }
 
 describe('fable51 ops tools', () => {
@@ -79,7 +80,7 @@ describe('fable51 ops tools', () => {
       assert.equal(value.output.expired, true)
       // The id carries elapsedMs so a second expiry does not overwrite the first.
       assert.equal(value.output.snapshotId, 'build-timebox-700000')
-      const snapshot = ctx.fable51.snapshots.get(value.output.snapshotId as string)
+      const snapshot = ctx.fable51.snapshotsOf(DEFAULT_SCOPE).get(value.output.snapshotId as string)
       assert.ok(snapshot, 'expiry must write a snapshot')
       assert.equal(snapshot?.data.verdict, 'unverified')
       const logged = worklogFor(ctx, 'build')
@@ -101,7 +102,7 @@ describe('fable51 ops tools', () => {
       const value = envelope(await execute(ctx, 'timeboxing', { stage: 'plan', elapsedMs: 1_000 }))
       assert.equal(value.output.expired, false)
       assert.ok(!('snapshotId' in value.output), 'no snapshot id when within budget')
-      assert.equal(ctx.fable51.snapshots.get('plan-timebox'), undefined)
+      assert.equal(ctx.fable51.snapshotsOf(DEFAULT_SCOPE).get('plan-timebox'), undefined)
       assert.equal(worklogFor(ctx, 'plan').length, 0)
     } finally {
       await ctx.fiber.dispose()

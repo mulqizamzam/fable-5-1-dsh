@@ -16,6 +16,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { DEFAULT_SESSION } from '../../src/state/episode.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 
 interface Waterfall {
   waterfall(t: unknown, n: string, p: unknown, next: () => Promise<unknown>): Promise<unknown>
@@ -42,7 +43,7 @@ async function preStep(ctx: Context, sessionId: string, turn: number, step: numb
 }
 
 function progressLines(ctx: Context): string[] {
-  return ctx.fable51.worklog.filter((entry) => entry.check === 'progress record').map((entry) => entry.output)
+  return ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((entry) => entry.check === 'progress record').map((entry) => entry.output)
 }
 
 describe('spec 4, progress reporting', () => {
@@ -193,7 +194,7 @@ describe('spec 55, reasoning bandwidth', () => {
 
       // Let the pre-execute listeners run: two take slots, the third queues.
       await new Promise((resolve) => setTimeout(resolve, 10))
-      const bandwidth = ctx.fable51.bandwidth(DEFAULT_SESSION)
+      const bandwidth = ctx.fable51.bandwidth(DEFAULT_SCOPE)
       assert.equal(bandwidth.cap, 2)
       assert.equal(bandwidth.inFlight, 2, 'never more than the cap may run at once')
       assert.equal(bandwidth.queued, 1, 'the excess must be queued, not dropped')
@@ -203,7 +204,7 @@ describe('spec 55, reasoning bandwidth', () => {
       for (const result of results) {
         assert.equal(result.isError, false, `a queued call must still run: ${JSON.stringify(result.content)}`)
       }
-      assert.equal(ctx.fable51.bandwidth(DEFAULT_SESSION).inFlight, 0, 'every slot must be given back')
+      assert.equal(ctx.fable51.bandwidth(DEFAULT_SCOPE).inFlight, 0, 'every slot must be given back')
       assert.equal(started.length, 3, 'no call may be refused')
     } finally {
       await ctx.fiber.dispose()
@@ -247,7 +248,7 @@ describe('spec 55, reasoning bandwidth', () => {
 
       const dispatches = prepared.map((entry) => scheduler.dispatch(entry.exec))
       await new Promise((resolve) => setTimeout(resolve, 20))
-      const bandwidth = ctx.fable51.bandwidth(DEFAULT_SESSION)
+      const bandwidth = ctx.fable51.bandwidth(DEFAULT_SCOPE)
       assert.equal(bandwidth.inFlight, 2, 'the cap must bound the running bodies')
       assert.equal(bandwidth.queued, 1, 'the third body must wait for a slot')
 
@@ -259,7 +260,7 @@ describe('spec 55, reasoning bandwidth', () => {
         else scheduler.finish(entry.exec, outcome.result)
       }
       assert.equal(
-        ctx.fable51.bandwidth(DEFAULT_SESSION).inFlight,
+        ctx.fable51.bandwidth(DEFAULT_SCOPE).inFlight,
         0,
         'every slot must be given back after the group finishes',
       )
@@ -277,7 +278,7 @@ describe('spec 55, reasoning bandwidth', () => {
         name: 'fable51_chain-vs-tree',
         arguments: { branchFactor: 2 },
       })
-      const bandwidth = ctx.fable51.bandwidth(DEFAULT_SESSION)
+      const bandwidth = ctx.fable51.bandwidth(DEFAULT_SCOPE)
       assert.equal(bandwidth.inFlight, 0, 'a finished call must not hold its slot')
       assert.equal(bandwidth.peak, 1, 'the peak must record that the slot was taken')
     } finally {
@@ -302,8 +303,8 @@ describe('spec 55, reasoning bandwidth', () => {
       const outcome = await scheduler.dispatch(prepared.exec)
       if (outcome.kind === 'post-result') await scheduler.finalize(prepared.exec, outcome.result)
       else scheduler.finish(prepared.exec, outcome.result)
-      assert.equal(ctx.fable51.bandwidth(DEFAULT_SESSION).inFlight, 0, 'a nested call must not take a slot')
-      assert.equal(ctx.fable51.bandwidth(DEFAULT_SESSION).queued, 0, 'a nested call must never queue')
+      assert.equal(ctx.fable51.bandwidth(DEFAULT_SCOPE).inFlight, 0, 'a nested call must not take a slot')
+      assert.equal(ctx.fable51.bandwidth(DEFAULT_SCOPE).queued, 0, 'a nested call must never queue')
     } finally {
       await ctx.fiber.dispose()
     }

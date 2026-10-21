@@ -16,6 +16,10 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { DEFAULT_SESSION } from '../../src/state/episode.ts'
+import { DEFAULT_SCOPE, DEFAULT_TENANT, scopeKeyOf } from '../../src/state/tenant.ts'
+
+/** The scope of a session id: the default tenant, that session. */
+const scopeOf = (sessionId: string): string => scopeKeyOf(DEFAULT_TENANT, sessionId)
 
 async function setup(): Promise<Context> {
   const ctx = new Context()
@@ -54,18 +58,18 @@ describe('per-session episode isolation', () => {
       const svc = ctx.fable51
       // Session B is mid-run: it charged against its own stage budget.
       await callAs(ctx, 'B', 'token-budget-per-stage', { stage: 'stage-B', tokens: 5000 })
-      assert.equal(svc.episode('B').stageTokens.get('stage-B'), 5000)
+      assert.equal(svc.episode(scopeOf('B')).stageTokens.get('stage-B'), 5000)
 
       // Session A starts a turn. A is not B.
       ctx.emit('session/event', { id: 'A' } as never, { type: 'turn/start' } as never)
 
       assert.equal(
-        svc.episode('B').stageTokens.get('stage-B'),
+        svc.episode(scopeOf('B')).stageTokens.get('stage-B'),
         5000,
         "session A's turn/start must not reset session B's stage budget",
       )
       assert.equal(
-        svc.episode('A').stageTokens.size,
+        svc.episode(scopeOf('A')).stageTokens.size,
         0,
         "session A's turn/start starts A's own budget empty",
       )
@@ -81,15 +85,15 @@ describe('per-session episode isolation', () => {
       for (let i = 0; i < 3; i += 1) {
         await callAs(ctx, 'A', 'escalation-ladder', { failed: true })
       }
-      assert.equal(ctx.fable51.episode('A').rung, 3, 'session A advanced its own ladder')
+      assert.equal(ctx.fable51.episode(scopeOf('A')).rung, 3, 'session A advanced its own ladder')
 
       ctx.emit('session/created', { id: 'B' } as never)
       assert.equal(
-        ctx.fable51.episode('A').rung,
+        ctx.fable51.episode(scopeOf('A')).rung,
         3,
         "session B's creation must not reset session A's ladder",
       )
-      assert.equal(ctx.fable51.episode('B').rung, 0, "session B starts at rung zero")
+      assert.equal(ctx.fable51.episode(scopeOf('B')).rung, 0, "session B starts at rung zero")
     } finally {
       await ctx.fiber.dispose()
     }
@@ -101,10 +105,10 @@ describe('per-session episode isolation', () => {
       await callAs(ctx, 'A', 'token-budget-per-stage', { stage: 'llm:m', tokens: 1000 })
       await callAs(ctx, 'B', 'token-budget-per-stage', { stage: 'llm:m', tokens: 2000 })
 
-      assert.equal(ctx.fable51.episode('A').stageTokens.get('llm:m'), 1000)
-      assert.equal(ctx.fable51.episode('B').stageTokens.get('llm:m'), 2000)
+      assert.equal(ctx.fable51.episode(scopeOf('A')).stageTokens.get('llm:m'), 1000)
+      assert.equal(ctx.fable51.episode(scopeOf('B')).stageTokens.get('llm:m'), 2000)
       assert.equal(
-        ctx.fable51.episode(DEFAULT_SESSION).stageTokens.size,
+        ctx.fable51.episode(DEFAULT_SCOPE).stageTokens.size,
         0,
         'an attributed call must not charge the unattributed bucket',
       )
@@ -139,11 +143,11 @@ describe('per-session episode isolation', () => {
       // A session's turn must not clear the unattributed bucket either.
       ctx.emit('session/event', { id: 'A' } as never, { type: 'turn/start' } as never)
       assert.equal(
-        ctx.fable51.episode(DEFAULT_SESSION).stageTokens.size,
+        ctx.fable51.episode(DEFAULT_SCOPE).stageTokens.size,
         0,
         'no session turn may reset the unattributed bucket',
       )
-      assert.equal(ctx.fable51.episode('A').stageTokens.size, 0, "session A's own turn did reset A")
+      assert.equal(ctx.fable51.episode(scopeOf('A')).stageTokens.size, 0, "session A's own turn did reset A")
     } finally {
       await ctx.fiber.dispose()
     }

@@ -188,7 +188,7 @@ export function reasoningFlowTools(): ToolSpec[] {
         },
       },
       outputSchema: { type: 'object', required: ['verdict', 'weighted'], properties: { verdict: { type: 'string', enum: ['contributed', 'neutral', 'discarded'] }, weighted: { type: 'number' } } },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         let weighted: number
         if (typeof record.weighted === 'number') {
@@ -228,7 +228,7 @@ export function reasoningFlowTools(): ToolSpec[] {
       description: 'Branch count adapts to the ambiguity score against the fork-depth budget (spec 62).',
       parameters: { type: 'object', required: ['ambiguity'], properties: { ambiguity: { type: 'number' } } },
       outputSchema: { type: 'object', required: ['branches', 'maxForkDepth'], properties: { branches: { type: 'number' }, maxForkDepth: { type: 'number' } } },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const ambiguity = requireNumber(record, 'ambiguity', 0, 1)
         const max = service.config.budget.maxForkDepth
@@ -376,7 +376,7 @@ export function reasoningFlowTools(): ToolSpec[] {
           bounds: { type: 'object', properties: { maxTurns: { type: 'number' }, maxTokens: { type: 'number' }, maxToolCalls: { type: 'number' } } },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const turns = requireNumber(record, 'turns')
         const tokens = requireNumber(record, 'tokens')
@@ -409,7 +409,7 @@ export function reasoningFlowTools(): ToolSpec[] {
         properties: { passId: { type: 'string' }, parentId: { oneOf: [{ type: 'string' }, { type: 'null' }] } },
       },
       outputSchema: { type: 'object', required: ['recorded', 'ancestors'], properties: { recorded: { type: 'boolean' }, ancestors: stringArray } },
-      execute(args, { service, sessionKey }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const passId = requireString(record, 'passId')
         const parentId = record.parentId === undefined || record.parentId === null ? null : requireString(record, 'parentId')
@@ -427,11 +427,11 @@ export function reasoningFlowTools(): ToolSpec[] {
           tokens: 0,
           latencyMs: 0,
           unverified: [],
-        })
+        }, scopeKey)
         // Spec 15: a lineage pass is a chain link (sequential); parallel
         // structure is labeled where branches join (dag tool, spec 34).
-        service.labelPass(sessionKey, passId, 'sequential')
-        return { recorded: true, ancestors: service.lineage.ancestors(passId) }
+        service.labelPass(scopeKey, passId, 'sequential')
+        return { recorded: true, ancestors: service.lineageOf(scopeKey).ancestors(passId) }
       },
     },
     {
@@ -440,7 +440,7 @@ export function reasoningFlowTools(): ToolSpec[] {
       description: 'Throttle forks when the queue depth exceeds max concurrent passes (spec 71).',
       parameters: { type: 'object', required: ['queueDepth'], properties: { queueDepth: { type: 'number' } } },
       outputSchema: { type: 'object', required: ['throttle', 'threshold'], properties: { throttle: { type: 'boolean' }, threshold: { type: 'number' } } },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const queueDepth = requireNumber(record, 'queueDepth')
         const threshold = service.config.reasoning.maxConcurrentPasses

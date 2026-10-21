@@ -8,6 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolEnv, type ToolSpec } from './shared.ts'
 import { DEFAULT_SESSION } from '../state/episode.ts'
+import { DEFAULT_TENANT, scopeKeyOf } from '../state/tenant.ts'
 import { contextTools } from './context.ts'
 import { verificationTools } from './verification.ts'
 import { dagTools } from './dag.ts'
@@ -41,9 +42,13 @@ export function allToolSpecs(): ToolSpec[] {
 }
 
 export function registerTools(ctx: Context): number {
-  // The registration env carries only the service; the session key is
-  // resolved per call from the execution the host hands the tool.
-  const env: ToolEnv = { service: ctx.fable51, sessionKey: DEFAULT_SESSION }
+  // The registration env carries only the service; the session and the tenant
+  // scope are resolved per call from the execution the host hands the tool.
+  const env: ToolEnv = {
+    service: ctx.fable51,
+    sessionKey: DEFAULT_SESSION,
+    scopeKey: scopeKeyOf(DEFAULT_TENANT, DEFAULT_SESSION),
+  }
   let count = 0
   for (const spec of allToolSpecs()) {
     ctx.tools.register(defineTool(spec, env))

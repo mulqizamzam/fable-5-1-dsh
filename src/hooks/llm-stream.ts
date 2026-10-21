@@ -28,8 +28,10 @@ export function wireLlmStream(ctx: Context): void {
     const svc = ctx.fable51 as Fable51Policy
     const stage = `llm:${options.model ?? 'unknown'}`
     // The loop stamps session identity on the request; the tokens this stream
-    // spends belong to that session's budget, not to the host's.
-    const key = sessionKeyFromOptions(options)
+    // spends belong to that session's budget, not to the host's. The request
+    // names the session but never its directory, so the tenant comes from
+    // what the session lifecycle recorded.
+    const key = svc.scopeKeyOfSessionId(sessionKeyFromOptions(options))
     const seen = new Set<string>()
     let tokens = 0
     // One plugin step in a hot path: a fault is logged, never escapes the generator.
@@ -57,7 +59,7 @@ export function wireLlmStream(ctx: Context): void {
                 verdict: 'neutral',
                 unverified: [],
                 at: Date.now(),
-              })
+              }, key)
             }
             seen.add(fp)
           })
@@ -88,7 +90,7 @@ export function wireLlmStream(ctx: Context): void {
             verdict: budget.stop ? 'discarded' : 'neutral',
             unverified: budget.stop ? ['stage exceeded token budget'] : [],
             at: Date.now(),
-          })
+          }, key)
         }
       })
       guard(() => {
@@ -100,7 +102,7 @@ export function wireLlmStream(ctx: Context): void {
             verdict: 'neutral',
             unverified: [],
             at: Date.now(),
-          })
+          }, key)
         }
       })
     }

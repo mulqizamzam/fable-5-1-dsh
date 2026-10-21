@@ -7,6 +7,7 @@
  * stays pending and ctx.fable51 never resolves.
  */
 import { describe, it } from 'node:test'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -156,7 +157,7 @@ describe('spec 95, pass-cost-accounting', () => {
       assert.equal(res.value.output.tokens, 5000)
       assert.equal(res.value.output.latencyMs, 140)
       assert.equal(res.value.output.risk, 1)
-      const booked = ctx.fable51.costLedger.filter((e) => e.stage === 'pass:p1')
+      const booked = ctx.fable51.costLedgerOf(DEFAULT_SCOPE).filter((e) => e.stage === 'pass:p1')
       assert.equal(booked.length, 1)
       assert.equal(booked[0]!.latencyMs, 140)
       assert.equal(booked[0]!.riskWeight, 1)
@@ -171,11 +172,11 @@ describe('spec 95, pass-cost-accounting', () => {
       const args = { passId: 'p1', tokens: 5000, latencyMs: 100, retries: 1, verifierMs: 40 }
       const first = await exec(ctx, 'fable51_pass-cost-accounting', args)
       assert.equal(first.value.rerun, false)
-      assert.equal(ctx.fable51.costLedger.filter((e) => e.stage === 'pass:p1').length, 1)
+      assert.equal(ctx.fable51.costLedgerOf(DEFAULT_SCOPE).filter((e) => e.stage === 'pass:p1').length, 1)
       const second = await exec(ctx, 'fable51_pass-cost-accounting', args)
       // Effectful: the old unconditional cache replayed the first answer, so the second booking never happened.
       assert.equal(second.value.rerun, false)
-      assert.equal(ctx.fable51.costLedger.filter((e) => e.stage === 'pass:p1').length, 2, 'each call must book its own ledger entry')
+      assert.equal(ctx.fable51.costLedgerOf(DEFAULT_SCOPE).filter((e) => e.stage === 'pass:p1').length, 2, 'each call must book its own ledger entry')
       assert.deepEqual(second.value.output, { tokens: 10_000, latencyMs: 280, risk: 2 }, 'the running stage cost must include both bookings')
     } finally {
       await ctx.fiber.dispose()
@@ -192,7 +193,7 @@ describe('spec 97, pass-sla', () => {
       assert.equal(res.value.spec, '97')
       assert.deepEqual(res.value.output.breaches, [])
       assert.equal(res.value.output.action, 'ok')
-      assert.equal(ctx.fable51.worklog.filter((w) => w.stage === 'pass:sla-ok').length, 0)
+      assert.equal(ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((w) => w.stage === 'pass:sla-ok').length, 0)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -205,7 +206,7 @@ describe('spec 97, pass-sla', () => {
       assert.equal(res.value.spec, '97')
       assert.deepEqual(res.value.output.breaches, ['latency', 'tokens', 'accuracy'])
       assert.equal(res.value.output.action, 'log+degrade')
-      const lines = ctx.fable51.worklog.filter((w) => w.stage === 'pass:sla-bad')
+      const lines = ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((w) => w.stage === 'pass:sla-bad')
       assert.equal(lines.length, 1, 'a breach must record exactly one worklog line')
       assert.ok(lines[0]!.unverified.includes('latency'), 'breach must be listed as unverified evidence')
     } finally {
@@ -225,7 +226,7 @@ describe('spec 97, pass-sla', () => {
       // Effectful: the old unconditional cache replayed the first answer, so the second breach was never logged.
       assert.equal(second.value.rerun, false)
       assert.deepEqual(second.value.output.breaches, ['accuracy'])
-      const lines = ctx.fable51.worklog.filter((w) => w.stage === 'pass:sla-acc')
+      const lines = ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((w) => w.stage === 'pass:sla-acc')
       assert.equal(lines.length, 2, 'each breach must record its own worklog line')
       assert.ok(lines.every((l) => l.unverified.includes('accuracy')), 'both lines must name the breached dimension')
     } finally {

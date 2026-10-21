@@ -12,7 +12,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import type { Fable51Policy } from '../policy-service.ts'
-import { sessionKeyFromAgent } from '../state/session-key.ts'
 
 interface PreStepPayload {
   agent: Agent
@@ -43,7 +42,7 @@ export function wireAgentPreStep(ctx: Context): void {
     try {
       // The run this step belongs to: the agent carries the session, and a
       // session's progress, budget and ladder are its own.
-      const key = sessionKeyFromAgent(payload.agent)
+      const key = svc.scopeKeyOfAgent(payload.agent)
       const episode = svc.episode(key)
       const turn = typeof payload.turn === 'number' ? payload.turn : 0
 
@@ -64,7 +63,7 @@ export function wireAgentPreStep(ctx: Context): void {
           verdict: 'neutral',
           unverified: [],
           at: Date.now(),
-        })
+        }, key)
       }
       // spec 6: pre-first-tool effort escalation, a search/multi-hop/ambiguity
       // signal in the step's messages raises the effort tier one rung.
@@ -86,7 +85,7 @@ export function wireAgentPreStep(ctx: Context): void {
             verdict: 'neutral',
             unverified: [],
             at: Date.now(),
-          })
+          }, key)
         }
       }
 
@@ -101,7 +100,7 @@ export function wireAgentPreStep(ctx: Context): void {
           verdict: 'neutral',
           unverified: [],
           at: Date.now(),
-        })
+        }, key)
       }
       const failedGates = episode.failingGates - episode.reportedFailingGates
       if (failedGates > 0) {
@@ -114,7 +113,7 @@ export function wireAgentPreStep(ctx: Context): void {
           verdict: 'discarded',
           unverified: ['a verification gate failed'],
           at: Date.now(),
-        })
+        }, key)
       }
     } catch (err) {
       ctx.logger('fable51').error(`agent/pre-step fault, admitting the step: ${String(err)}`)

@@ -6,6 +6,7 @@
  * covered by test/unit/progress-bandwidth.spec.ts.
  */
 import { describe, it } from 'node:test'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -77,7 +78,7 @@ describe('Gate 3, hooks fire', () => {
       const decision = await (ctx as unknown as { waterfall(t: unknown, n: string, p: unknown, next: () => Promise<unknown>): Promise<unknown> })
         .waterfall(ctx, 'agent/pre-step', { messages: [], turn: 1, step: 1 }, async () => ({ kind: 'enter' }))
       assert.deepEqual(decision, { kind: 'enter' })
-      assert.ok(ctx.fable51.worklog.length > 0, 'pre-step observer must have recorded a worklog line')
+      assert.ok(ctx.fable51.worklogOf(DEFAULT_SCOPE).length > 0, 'pre-step observer must have recorded a worklog line')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -86,9 +87,9 @@ describe('Gate 3, hooks fire', () => {
   it('tools/result observer records provenance and worklog', async () => {
     const ctx = await setup()
     try {
-      const before = ctx.fable51.worklog.length
+      const before = ctx.fable51.worklogOf(DEFAULT_SCOPE).length
       ctx.emit('tools/result', { name: 'fable51_context-management', arguments: { fillRatio: 0.5 } } as never, { content: [{ type: 'text', text: 'ok' }], isError: false } as never)
-      assert.ok(ctx.fable51.worklog.length > before, 'tools/result observer must append a worklog line')
+      assert.ok(ctx.fable51.worklogOf(DEFAULT_SCOPE).length > before, 'tools/result observer must append a worklog line')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -117,7 +118,7 @@ describe('Gate 3, hooks fire', () => {
       ctx.emit('session/created', {} as never)
       ctx.emit('session/event', {} as never, { type: 'turn/start' } as never)
       ctx.emit('session/event', {} as never, { type: 'turn/end' } as never)
-      const stages = ctx.fable51.worklog.map((w) => w.stage)
+      const stages = ctx.fable51.worklogOf(DEFAULT_SCOPE).map((w) => w.stage)
       assert.ok(stages.includes('session:start'), 'session/created must be observed')
       assert.ok(stages.includes('session:turn-end'), 'turn/end must checkpoint')
     } finally {

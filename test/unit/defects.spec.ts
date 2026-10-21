@@ -15,6 +15,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { resolveConfig } from '../../src/config/defaults.ts'
 import { DEFAULT_SESSION } from '../../src/state/episode.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 
 interface Envelope {
   readonly ok: boolean
@@ -171,10 +172,10 @@ describe('defect: state grew for the lifetime of the host', () => {
     try {
       const svc = ctx.fable51
       for (let i = 0; i < 20000; i += 1) {
-        svc.recordWorklog({ stage: 's', output: `entry ${i}`, check: 'c', verdict: 'neutral', unverified: [], at: i })
+        svc.recordWorklog({ stage: 's', output: `entry ${i}`, check: 'c', verdict: 'neutral', unverified: [], at: i }, DEFAULT_SCOPE)
       }
-      assert.ok(svc.worklog.length <= 5000, `worklog grew unbounded to ${svc.worklog.length}`)
-      assert.equal(svc.worklog.at(-1)?.output, 'entry 19999', 'the newest entries must be the ones kept')
+      assert.ok(svc.worklogOf(DEFAULT_SCOPE).length <= 5000, `worklog grew unbounded to ${svc.worklogOf(DEFAULT_SCOPE).length}`)
+      assert.equal(svc.worklogOf(DEFAULT_SCOPE).at(-1)?.output, 'entry 19999', 'the newest entries must be the ones kept')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -183,7 +184,7 @@ describe('defect: state grew for the lifetime of the host', () => {
   it('DEFECT-12 the cache is bounded', async () => {
     const ctx = await setup()
     try {
-      const cache = ctx.fable51.cache
+      const cache = ctx.fable51.cacheOf(DEFAULT_SCOPE)
       for (let i = 0; i < 20000; i += 1) cache.set(cache.key({ i }, '99', 'sha256:none'), i)
       assert.ok(cache.size <= 2000, `cache grew unbounded to ${cache.size}`)
     } finally {
@@ -194,13 +195,13 @@ describe('defect: state grew for the lifetime of the host', () => {
   it('DEFECT-13 the stage token budget is a per-turn budget, not a lifetime one', async () => {
     const ctx = await setup()
     try {
-      ctx.fable51.addStageTokens(DEFAULT_SESSION, 'llm:proof', 500_000)
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).stageTokens.get('llm:proof'), 500_000)
+      ctx.fable51.addStageTokens(DEFAULT_SCOPE, 'llm:proof', 500_000)
+      assert.equal(ctx.fable51.episode(DEFAULT_SCOPE).stageTokens.get('llm:proof'), 500_000)
       // 'session/event' is declared with a scoped `this`, so its published arity counts a
       // receiver cordis never passes at runtime; reach it through cordis like the waterfall helper.
       const internals = ctx as unknown as { emit(n: string, s: unknown, e: unknown): void }
       internals.emit('session/event', {} as never, { type: 'turn/start' } as never)
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).stageTokens.get('llm:proof'), undefined, 'a new turn must not inherit the previous turn’s exhausted budget')
+      assert.equal(ctx.fable51.episode(DEFAULT_SCOPE).stageTokens.get('llm:proof'), undefined, 'a new turn must not inherit the previous turn’s exhausted budget')
     } finally {
       await ctx.fiber.dispose()
     }

@@ -197,13 +197,13 @@ export function dagTools(): ToolSpec[] {
       },
       execute(args, env) {
         const { passId, deps } = args as { passId: unknown; deps: unknown }
-        const { service, sessionKey } = env
+        const { service, scopeKey } = env
         if (typeof passId !== 'string' || passId.length === 0) throw new Error('passId must be a non-empty string')
-        if (service.lineage.get(passId) !== undefined) {
+        if (service.lineageOf(scopeKey).get(passId) !== undefined) {
           throw new Error(`pass ${passId} is already recorded, lineage is append-only`)
         }
         const unique = [...new Set(parseStringList(deps, 'deps'))]
-        const unknown = unique.filter(dep => service.lineage.get(dep) === undefined)
+        const unknown = unique.filter(dep => service.lineageOf(scopeKey).get(dep) === undefined)
         if (unknown.length > 0) throw new Error(`pass ${passId} depends on unrecorded passes: ${unknown.join(', ')}`)
         const verdict: PassVerdict = 'contributed'
         // Every dep is an edge on the pass; the lineage tree models one parent,
@@ -225,11 +225,11 @@ export function dagTools(): ToolSpec[] {
           latencyMs: 0,
           unverified: [],
         }
-        service.recordPass(pass)
+        service.recordPass(pass, scopeKey)
         // Spec 15: label the pass's reasoning mode by its dependency shape,
         // a join of several branches is parallel, a single link is sequential.
-        service.labelPass(sessionKey, passId, unique.length > 1 ? 'parallel' : 'sequential')
-        return { recorded: true, ancestors: service.lineage.ancestors(passId) }
+        service.labelPass(scopeKey, passId, unique.length > 1 ? 'parallel' : 'sequential')
+        return { recorded: true, ancestors: service.lineageOf(scopeKey).ancestors(passId) }
       },
     },
     {

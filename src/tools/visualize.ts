@@ -6,6 +6,7 @@
  */
 import type { ToolSpec } from './shared.ts'
 import type { PolicyRecord } from '../state/registry.ts'
+import { tenantOfScope } from '../state/tenant.ts'
 import type { ReasoningPass } from '../types/pass.ts'
 
 function asRecord(args: unknown): Record<string, unknown> {
@@ -76,8 +77,9 @@ export function visualizeTools(): ToolSpec[] {
       },
       outputSchema: {
         type: 'object',
-        required: ['session', 'policies', 'lineage', 'costs', 'cache', 'snapshots', 'config', 'progress', 'bandwidth'],
+        required: ['tenant', 'session', 'policies', 'lineage', 'costs', 'cache', 'snapshots', 'config', 'progress', 'bandwidth'],
         properties: {
+          tenant: { type: 'string', description: 'the tenant the shared state below belongs to' },
           session: { type: 'string', description: 'the session the run-scoped numbers below belong to' },
           policies: {
             type: 'array',
@@ -190,7 +192,7 @@ export function visualizeTools(): ToolSpec[] {
           },
         },
       },
-      execute(args, { service, sessionKey }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const format = (record.format as string) ?? 'ascii'
         const includeWorklog = record.includeWorklog === true
@@ -215,16 +217,16 @@ export function visualizeTools(): ToolSpec[] {
         }))
 
         // Lineage
-        const allPasses = service.lineage.all()
-        const verdicts = service.lineage.verdicts()
+        const allPasses = service.lineageOf(scopeKey).all()
+        const verdicts = service.lineageOf(scopeKey).verdicts()
         const treeAscii = renderLineageTree({
-          get: (id) => service.lineage.get(id),
-          children: (id) => service.lineage.children(id),
+          get: (id) => service.lineageOf(scopeKey).get(id),
+          children: (id) => service.lineageOf(scopeKey).children(id),
           all: () => allPasses,
         }, maxLineageDepth)
 
         // Costs
-        const costEntries = service.costLedger
+        const costEntries = service.costLedgerOf(scopeKey)
         let totalTokens = 0
         let totalLatencyMs = 0
         let totalRisk = 0
@@ -251,23 +253,23 @@ export function visualizeTools(): ToolSpec[] {
         }))
 
         const stageBudgets: Record<string, number> = {}
-        for (const [stage, budget] of service.episode(sessionKey).stageTokens) {
+        for (const [stage, budget] of service.episode(scopeKey).stageTokens) {
           stageBudgets[stage] = budget
         }
 
         // Cache
-        const cacheSize = service.cache.size
-        const cacheHits = service.cache.hits
-        const cacheMisses = service.cache.misses
+        const cacheSize = service.cacheOf(scopeKey).size
+        const cacheHits = service.cacheOf(scopeKey).hits
+        const cacheMisses = service.cacheOf(scopeKey).misses
         const hitRate = cacheHits + cacheMisses > 0 ? cacheHits / (cacheHits + cacheMisses) : 0
 
         // Snapshots
-        const snapshotIds = service.snapshots.ids()
-        const latestSnapshot = service.snapshots.latest()
+        const snapshotIds = service.snapshotsOf(scopeKey).ids()
+        const latestSnapshot = service.snapshotsOf(scopeKey).latest()
 
         // Config summary
         const config = {
-          effortTier: service.episode(sessionKey).effortTier,
+          effortTier: service.episode(scopeKey).effortTier,
           maxForkDepth: service.config.budget.maxForkDepth,
           maxConcurrentPasses: service.config.reasoning.maxConcurrentPasses,
           stageTokenBudget: service.config.budget.stageTokenBudget,
@@ -275,8 +277,9 @@ export function visualizeTools(): ToolSpec[] {
 
         const output = {
           // The run-scoped numbers below belong to this session; the shared
-          // audit trail belongs to the host. Say which is which.
-          session: sessionKey,
+          // audit trail belongs to this tenant. Say which is which.
+          tenant: tenantOfScope(scopeKey),
+          session: scopeKey,
           policies,
           lineage: {
             totalPasses: allPasses.length,
@@ -302,12 +305,12 @@ export function visualizeTools(): ToolSpec[] {
             ids: snapshotIds,
           },
           config,
-          worklog: includeWorklog ? service.worklog : [],
-          gateLog: includeGateLog ? service.gateLog : [],
+          worklog: includeWorklog ? service.worklogOf(scopeKey) : [],
+          gateLog: includeGateLog ? service.gateLogOf(scopeKey) : [],
           // spec 4: the narrated progress of this run.
-          progress: [...service.progress(sessionKey)],
+          progress: [...service.progress(scopeKey)],
           // spec 55: the parallel-pass state of this run.
-          bandwidth: service.bandwidth(sessionKey),
+          bandwidth: service.bandwidth(scopeKey),
         }
 
         if (format === 'json') {
@@ -318,8 +321,8 @@ export function visualizeTools(): ToolSpec[] {
         const lines: string[] = []
         lines.push('=== fable51 Policy Visualizer ===')
         lines.push('')
-        lines.push(`Run scope: session "${sessionKey}" (budgets, effort tier, fork window)`)
-        lines.push('Shared scope: host (policies, ledger, cache, snapshots, lineage)')
+        lines.push(`Run scope: tenant "${tenantOfScope(scopeKey)}", session "${scopeKey}" (budgets, effort tier, fork window)`)
+        lines.push(`Shared scope: tenant "${tenantOfScope(scopeKey)}" (ledger, cache, snapshots, lineage)`)
         lines.push('')
 
         lines.push('--- Policies ---')

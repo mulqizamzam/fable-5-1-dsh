@@ -11,7 +11,6 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Fable51Policy } from '../policy-service.ts'
-import { sessionKeyOf } from '../state/session-key.ts'
 
 interface SessionEventLike {
   type?: string
@@ -27,7 +26,8 @@ export function wireSessionEvent(ctx: Context): void {
     // The service is host-wide and outlives the session: a new session must not
     // start on the previous session's escalation rung and replan count, and
     // must not reset them for the sessions still running.
-    svc.resetEpisodeState(sessionKeyOf(session))
+    const scopeKey = svc.scopeKeyOfSession(session)
+    svc.resetEpisodeState(scopeKey)
     const pinned = svc.config.determinism.pinnedVersions
     svc.recordWorklog({
       stage: 'session:start',
@@ -37,12 +37,12 @@ export function wireSessionEvent(ctx: Context): void {
       // The pins are config constants; nothing compares them against the running host.
       unverified: ['pins were not compared against the running host'],
       at: Date.now(),
-    })
+    }, scopeKey)
   })
 
   ctx.on('session/event', (session: unknown, event: Readonly<SessionEventLike>) => {
     const svc = ctx.fable51 as Fable51Policy
-    const key = sessionKeyOf(session)
+    const key = svc.scopeKeyOfSession(session)
     switch (event.type) {
       case 'turn/start':
         // new stage: reset fork/merge counters (spec 96 budget window) and the
@@ -53,9 +53,10 @@ export function wireSessionEvent(ctx: Context): void {
       case 'turn/end': {
         // spec 38/46: checkpoint at the turn boundary; spec 10: handoff state.
         const episode = svc.episode(key)
-        const snapshot = svc.snapshots.create(`turn-end-${Date.now()}-${turnEndSeq++}`, {
-          gates: svc.gateLog.length,
-          worklog: svc.worklog.length,
+        const scope = svc.scopeOf(key)
+        const snapshot = scope.snapshots.create(`turn-end-${Date.now()}-${turnEndSeq++}`, {
+          gates: scope.gateLog.length,
+          worklog: scope.worklog.length,
           replans: episode.replans,
           rung: episode.rung,
         })
@@ -66,7 +67,7 @@ export function wireSessionEvent(ctx: Context): void {
           verdict: 'contributed',
           unverified: [],
           at: Date.now(),
-        })
+        }, key)
         break
       }
       default:
@@ -77,17 +78,18 @@ export function wireSessionEvent(ctx: Context): void {
   // spec 30: postmortem emission on session end; spec 10: handoff persistence.
   ctx.on('session/disposed', (session: unknown) => {
     const svc = ctx.fable51 as Fable51Policy
-    const key = sessionKeyOf(session)
+    const key = svc.scopeKeyOfSession(session)
+    const scope = svc.scopeOf(key)
     // Persist the handoff state (stage map + last checkpoint hash + pins)
     // BEFORE the closing postmortem line, so the snapshot reflects the run.
     const handoff = svc.handoffSnapshot(key)
     svc.recordWorklog({
       stage: 'session:end',
-      output: `handoff ${handoff.id} (${handoff.hash.slice(0, 16)}…) postmortem: gates=${svc.gateLog.length} worklog=${svc.worklog.length} replans=${svc.episode(key).replans} rung=${svc.episode(key).rung}`,
+      output: `handoff ${handoff.id} (${handoff.hash.slice(0, 16)}…) postmortem: gates=${scope.gateLog.length} worklog=${scope.worklog.length} replans=${svc.episode(key).replans} rung=${svc.episode(key).rung}`,
       check: 'postmortem format',
       verdict: 'contributed',
       unverified: [],
       at: Date.now(),
-    })
+    }, key)
   })
 }

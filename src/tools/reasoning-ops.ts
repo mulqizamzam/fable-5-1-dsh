@@ -75,7 +75,7 @@ export function reasoningOpsTools(): ToolSpec[] {
         required: ['quorum', 'ratio', 'threshold'],
         properties: { quorum: { type: 'boolean' }, ratio: { type: 'number' }, threshold: { type: 'number' } },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const agree = requireNumber(record, 'agree')
         const total = requireNumber(record, 'total')
@@ -91,7 +91,7 @@ export function reasoningOpsTools(): ToolSpec[] {
       description: 'Derive a deterministic variant seed per pass to avoid echo chambers (spec 74).',
       parameters: { type: 'object', required: ['passId'], properties: { passId: { type: 'string' } } },
       outputSchema: { type: 'object', required: ['variantSeed'], properties: { variantSeed: { type: 'number' } } },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const passId = requireString(record, 'passId')
         const offset = parseInt(fingerprint(passId).slice(7, 15), 16) % 1000
@@ -104,7 +104,7 @@ export function reasoningOpsTools(): ToolSpec[] {
       description: 'Decay a pass weight by age: w ∝ exp(−λ·age) (spec 75).',
       parameters: { type: 'object', required: ['ageMs'], properties: { ageMs: { type: 'number' } } },
       outputSchema: { type: 'object', required: ['weight', 'lambda'], properties: { weight: { type: 'number' }, lambda: { type: 'number' } } },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const ageMs = requireNumber(record, 'ageMs')
         return { weight: service.decayWeight(ageMs), lambda: service.config.reasoning.decayLambda }
@@ -158,7 +158,7 @@ export function reasoningOpsTools(): ToolSpec[] {
         required: ['added', 'removed', 'changed'],
         properties: { added: stringArray, removed: stringArray, changed: stringArray },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const from = record.from as Record<string, unknown> | undefined
         const to = record.to as Record<string, unknown> | undefined
@@ -166,9 +166,9 @@ export function reasoningOpsTools(): ToolSpec[] {
         const fromData = from.data
         const toData = to.data
         if (typeof fromData !== 'object' || fromData === null || typeof toData !== 'object' || toData === null) throw new Error('from.data and to.data must be objects')
-        service.snapshots.create(requireString(from, 'id'), fromData as Record<string, unknown>)
-        service.snapshots.create(requireString(to, 'id'), toData as Record<string, unknown>)
-        return service.snapshots.diff(requireString(from, 'id'), requireString(to, 'id'))
+        service.snapshotsOf(scopeKey).create(requireString(from, 'id'), fromData as Record<string, unknown>)
+        service.snapshotsOf(scopeKey).create(requireString(to, 'id'), toData as Record<string, unknown>)
+        return service.snapshotsOf(scopeKey).diff(requireString(from, 'id'), requireString(to, 'id'))
       },
     },
     {
@@ -215,7 +215,7 @@ export function reasoningOpsTools(): ToolSpec[] {
         properties: { passId: { type: 'string' }, tokens: { type: 'number' }, verdict: { type: 'string', enum: ['contributed', 'neutral', 'discarded'] } },
       },
       outputSchema: { type: 'object', required: ['traceId'], properties: { traceId: { type: 'string' } } },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const passId = requireString(record, 'passId')
         const tokens = requireNumber(record, 'tokens')
@@ -228,7 +228,7 @@ export function reasoningOpsTools(): ToolSpec[] {
           verdict,
           unverified: [],
           at: Date.now(),
-        })
+        }, scopeKey)
         return { traceId }
       },
     },
@@ -328,10 +328,10 @@ export function reasoningOpsTools(): ToolSpec[] {
       description: 'Prune unreferenced ancestry, keeping live passes and audit-protected ids (spec 87).',
       parameters: { type: 'object', required: ['liveIds'], properties: { liveIds: stringArray } },
       outputSchema: { type: 'object', required: ['dropped'], properties: { dropped: stringArray } },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const liveIds = requireArray(record, 'liveIds') as string[]
-        return { dropped: service.lineage.prune(liveIds) }
+        return { dropped: service.lineageOf(scopeKey).prune(liveIds) }
       },
     },
     {
@@ -351,7 +351,7 @@ export function reasoningOpsTools(): ToolSpec[] {
         required: ['deadline'],
         properties: { deadline: { oneOf: [{ type: 'number' }, { type: 'null' }] } },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const parent = deadlineOrNull(record.parentDeadline, 'parentDeadline')
         const own = deadlineOrNull(record.ownDeadline, 'ownDeadline')
@@ -383,7 +383,7 @@ export function reasoningOpsTools(): ToolSpec[] {
           weighted: { type: 'number' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const evidence = requireNumber(record, 'evidence', -1e9, 1e9)
         const coherence = requireNumber(record, 'coherence', -1e9, 1e9)

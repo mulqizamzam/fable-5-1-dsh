@@ -57,7 +57,7 @@ export function verificationTools(): ToolSpec[] {
           at: { type: 'number' },
         },
       },
-      execute(args, { service, sessionKey }): GateResult {
+      execute(args, { service, scopeKey }): GateResult {
         const record = asRecord(args)
         // Fail-loud: a gate that can fail cannot be recorded from missing
         // fields, undefined === undefined must never read as a pass (spec 5).
@@ -65,7 +65,7 @@ export function verificationTools(): ToolSpec[] {
         const cmd = requireNonEmptyString(record.cmd, 'cmd')
         const expected = requireNonEmptyString(record.expected, 'expected')
         const actual = requireNonEmptyString(record.actual, 'actual')
-        return service.recordGate({ gate: check, cmd, expected, actual, pass: actual === expected, at: Date.now() }, sessionKey)
+        return service.recordGate({ gate: check, cmd, expected, actual, pass: actual === expected, at: Date.now() }, scopeKey)
       },
     },
     {
@@ -110,7 +110,7 @@ export function verificationTools(): ToolSpec[] {
         required: ['tagged'],
         properties: { tagged: { type: 'string', description: 'Claim prefixed with its provenance marker.' } },
       },
-      execute(args, { service }): { tagged: string } {
+      execute(args, { service, scopeKey }): { tagged: string } {
         const { claim, tag } = args as { claim: string; tag: ProvenanceTag }
         return { tagged: service.tag(claim, tag) }
       },
@@ -198,11 +198,11 @@ export function verificationTools(): ToolSpec[] {
           firstSeen: { type: 'boolean' },
         },
       },
-      execute(args, { service }): { hash: string; firstSeen: boolean } {
+      execute(args, { service, scopeKey }): { hash: string; firstSeen: boolean } {
         const { input } = args as { input: unknown }
-        const hash = service.cache.key(input, 'idempotency-check', 'none')
-        const firstSeen = service.cache.get(hash) === undefined
-        if (firstSeen) service.cache.set(hash, hash)
+        const hash = service.cacheOf(scopeKey).key(input, 'idempotency-check', 'none')
+        const firstSeen = service.cacheOf(scopeKey).get(hash) === undefined
+        if (firstSeen) service.cacheOf(scopeKey).set(hash, hash)
         return { hash, firstSeen }
       },
     },
@@ -299,7 +299,7 @@ export function verificationTools(): ToolSpec[] {
           seed: { type: 'number' },
         },
       },
-      execute(args, { service }): { replicaId: string; seed: number } {
+      execute(args, { service, scopeKey }): { replicaId: string; seed: number } {
         const { passId, input } = args as { passId: string; input: unknown }
         // A seed from service.seed() alone replicates the source run verbatim (spec 48).
         const seed = service.seed() + Number.parseInt(fingerprint({ passId, input }).slice(7, 15), 16)

@@ -22,26 +22,12 @@ import { PassLineage } from './state/lineage.ts'
 import { PolicyRegistry } from './state/registry.ts'
 import { ReasonCache } from './state/cache.ts'
 import { SnapshotStore, type Snapshot } from './state/snapshots.ts'
-import { EpisodeStore, PROGRESS_CAP, type EpisodeState, type EffortTier, type ProgressRecord, type ReasoningMode } from './state/episode.ts'
+import { EpisodeStore, PROGRESS_CAP, DEFAULT_SESSION, type EpisodeState, type EffortTier, type ProgressRecord, type ReasoningMode } from './state/episode.ts'
+import { TenantRegistry, scopeKeyOf, tenantKeyFromCwd, tenantOfScope, type TenantState } from './state/tenant.ts'
+import { cwdOfSession, sessionKeyOf } from './state/session-key.ts'
 import type { GateResult } from './types/gate.ts'
 import type { PassScore, PassVerdict, ReasoningPass } from './types/pass.ts'
-
-export interface WorklogEntry {
-  readonly stage: string
-  readonly output: string
-  readonly check: string
-  readonly verdict: PassVerdict
-  readonly unverified: readonly string[]
-  readonly at: number
-}
-
-export interface CostLedgerEntry {
-  readonly stage: string
-  readonly tokens: number
-  readonly latencyMs: number
-  readonly riskWeight: number
-  readonly at: number
-}
+import type { CostLedgerEntry, WorklogEntry } from './types/log.ts'
 
 export type ProvenanceTag =
   | { readonly kind: 'fetch'; readonly url: string }
@@ -51,6 +37,7 @@ export type ProvenanceTag =
 export type EscalationRung = 'retry' | 'replan' | 'downgrade' | 'ask'
 
 export type { EffortTier, EpisodeState, ReasoningMode }
+export type { CostLedgerEntry, WorklogEntry } from './types/log.ts'
 
 export interface ApprovalRequest {
   readonly action: string
@@ -151,12 +138,17 @@ export class Fable51Policy extends Service {
 
   readonly config: Fable51Config
   readonly registry = new PolicyRegistry()
-  readonly lineage = new PassLineage()
-  readonly cache = new ReasonCache(CACHE_CAP)
-  readonly snapshots = new SnapshotStore(SNAPSHOT_CAP)
-  readonly gateLog: GateResult[] = []
-  readonly worklog: WorklogEntry[] = []
-  readonly costLedger: CostLedgerEntry[] = []
+
+  /**
+   * The tenants of this host, and the state each one owns.
+   *
+   * The worklog, the gate log, the cost ledger, the pass lineage, the
+   * snapshots and the cache were host-wide, so one tenant read another's
+   * spend and another's history, and the budget advisor computed a
+   * recommendation from bookings the caller never made. Each of those now
+   * lives under the tenant that produced it.
+   */
+  readonly tenants: TenantRegistry
 
   /**
    * Per-session run state (specs 6, 14, 15, 22, 28, 58, 96).
@@ -175,6 +167,7 @@ export class Fable51Policy extends Service {
     super(ctx, 'fable51')
     this.config = resolveConfig(config)
     this.episodes = new EpisodeStore(this.config.effort.defaultTier)
+    this.tenants = new TenantRegistry(SNAPSHOT_CAP, CACHE_CAP, this.config.tenants.maxTenants)
     for (const policy of this.config.registry.policies) this.registry.register(policy)
     // PRD §3: hooks and tools wire at service construction; cordis disposes
     // listeners and tool registrations with the owning fiber automatically.
@@ -185,6 +178,116 @@ export class Fable51Policy extends Service {
     wireSessionEvent(ctx)
     const toolCount = registerTools(ctx)
     ctx.logger('fable51').info(`fable-5-1 loaded, ${toolCount} tools registered`)
+  }
+
+  // ---- tenant scope ----
+
+  /**
+   * The scope key for a session the host handed us.
+   *
+   * The key composes the tenant with the session, so an episode, a budget
+   * and a ledger belong to one session of one tenant. Two tenants may name
+   * the same session id; they will not share any of it.
+   */
+  scopeKeyOfSession(session: unknown): string {
+    const sessionKey = sessionKeyOf(session)
+    return scopeKeyOf(this.tenantKeyFor(session, sessionKey), sessionKey)
+  }
+
+  /** The scope key for an agent: `agent.session`. */
+  scopeKeyOfAgent(agent: unknown): string {
+    if (typeof agent !== 'object' || agent === null) return this.scopeKeyOfSessionId(DEFAULT_SESSION)
+    const session = (agent as { session?: unknown }).session
+    return this.scopeKeyOfSessionView(session)
+  }
+
+  /** The scope key for a tool execution: `exec.agent.session`. */
+  scopeKeyOfExec(exec: unknown): string {
+    if (typeof exec !== 'object' || exec === null) return this.scopeKeyOfSessionId(DEFAULT_SESSION)
+    const agent = (exec as { agent?: unknown }).agent
+    if (typeof agent !== 'object' || agent === null) return this.scopeKeyOfSessionId(DEFAULT_SESSION)
+    const session = (agent as { session?: unknown }).session
+    return this.scopeKeyOfSessionView(session)
+  }
+
+  /**
+   * The scope key for a session VIEW, the agent's live handle on its session.
+   *
+   * The view carries the session id but not necessarily its directory, so
+   * the tenant comes from what the session lifecycle recorded when the
+   * session was created. A view that does carry the directory is trusted
+   * directly, and the directory is remembered for the views that do not.
+   */
+  private scopeKeyOfSessionView(session: unknown): string {
+    const sessionKey = sessionKeyOf(session)
+    if (cwdOfSession(session) === undefined) return this.scopeKeyOfSessionId(sessionKey)
+    return scopeKeyOf(this.tenantKeyFor(session, sessionKey), sessionKey)
+  }
+
+  /**
+   * The scope key for a bare session id.
+   *
+   * The generation hook only ever names the session, never its directory, so
+   * the tenant comes from what the session lifecycle already recorded. A
+   * session nobody announced lands in the default tenant.
+   */
+  scopeKeyOfSessionId(sessionId: string): string {
+    const mode = this.config.tenants.mode
+    if (mode === 'none') return scopeKeyOf(this.config.tenants.defaultKey, sessionId)
+    if (mode === 'session') return scopeKeyOf(sessionId, sessionId)
+    const tenant = this.tenants.tenantFor(sessionId) ?? this.config.tenants.defaultKey
+    return scopeKeyOf(tenant, sessionId)
+  }
+
+  /**
+   * The tenant a session belongs to.
+   *
+   * The working directory is the boundary the host already draws when it
+   * creates a session. A session that names no directory lands in the
+   * default tenant, which is a real bucket and never a wildcard.
+   */
+  private tenantKeyFor(session: unknown, sessionKey: string): string {
+    const mode = this.config.tenants.mode
+    if (mode === 'none') return this.config.tenants.defaultKey
+    if (mode === 'session') return sessionKey
+    const tenant = tenantKeyFromCwd(cwdOfSession(session), this.config.tenants.defaultKey)
+    this.tenants.remember(sessionKey, tenant)
+    return tenant
+  }
+
+  /** The tenant state a scope key owns. */
+  scopeOf(scopeKey: string): TenantState {
+    return this.tenants.scope(tenantOfScope(scopeKey))
+  }
+
+  /** The worklog of one tenant. */
+  worklogOf(scopeKey: string): WorklogEntry[] {
+    return this.scopeOf(scopeKey).worklog
+  }
+
+  /** The gate log of one tenant. */
+  gateLogOf(scopeKey: string): GateResult[] {
+    return this.scopeOf(scopeKey).gateLog
+  }
+
+  /** The cost ledger of one tenant. */
+  costLedgerOf(scopeKey: string): CostLedgerEntry[] {
+    return this.scopeOf(scopeKey).costLedger
+  }
+
+  /** The snapshot store of one tenant. */
+  snapshotsOf(scopeKey: string): SnapshotStore {
+    return this.scopeOf(scopeKey).snapshots
+  }
+
+  /** The pass lineage of one tenant. */
+  lineageOf(scopeKey: string): PassLineage {
+    return this.scopeOf(scopeKey).lineage
+  }
+
+  /** The idempotency cache of one tenant. */
+  cacheOf(scopeKey: string): ReasonCache {
+    return this.scopeOf(scopeKey).cache
   }
 
   /**
@@ -423,23 +526,25 @@ export class Fable51Policy extends Service {
    * hash (spec 10). The counters are the session's own episode, so a handoff
    * reports the run it belongs to.
    */
-  handoffSnapshot(key: string, id = `session-handoff-${++this.handoffSeq}`): Snapshot {
-    const episode = this.episodes.get(key)
-    return this.snapshots.create(id, {
-      stageMap: this.worklog.map((entry) => entry.stage),
-      gates: this.gateLog.length,
-      worklog: this.worklog.length,
+  handoffSnapshot(scopeKey: string, id = `session-handoff-${++this.handoffSeq}`): Snapshot {
+    const episode = this.episodes.get(scopeKey)
+    const scope = this.scopeOf(scopeKey)
+    return scope.snapshots.create(id, {
+      stageMap: scope.worklog.map((entry) => entry.stage),
+      gates: scope.gateLog.length,
+      worklog: scope.worklog.length,
       replans: episode.replans,
       rung: episode.rung,
-      lastHash: this.snapshots.latest()?.hash ?? 'sha256:none',
+      lastHash: scope.snapshots.latest()?.hash ?? 'sha256:none',
       pinnedVersions: this.config.determinism.pinnedVersions,
     })
   }
 
   /** Most recent checkpoint not marked unverified; the rollback target (specs 18/46). */
-  lastVerifiedSnapshot(): Snapshot | undefined {
-    for (const id of [...this.snapshots.ids()].reverse()) {
-      const snapshot = this.snapshots.get(id)
+  lastVerifiedSnapshot(scopeKey: string): Snapshot | undefined {
+    const snapshots = this.snapshotsOf(scopeKey)
+    for (const id of [...snapshots.ids()].reverse()) {
+      const snapshot = snapshots.get(id)
       if (snapshot === undefined) continue
       if (snapshot.data.verdict === 'unverified') continue
       return snapshot
@@ -464,39 +569,37 @@ export class Fable51Policy extends Service {
   }
 
   // ---- specs 5 / 12: verification gates ----
-  recordGate(result: GateResult, key?: string): GateResult {
-    const entry = pushCapped(this.gateLog, result, GATE_LOG_CAP)
+  recordGate(result: GateResult, scopeKey: string): GateResult {
+    const entry = pushCapped(this.gateLogOf(scopeKey), result, GATE_LOG_CAP)
     // A failed gate is worth narrating (spec 4), and only the run that
     // failed it should hear about it.
-    if (!result.pass && key !== undefined) {
-      this.episodes.get(key).failingGates += 1
+    if (!result.pass) {
+      this.episodes.get(scopeKey).failingGates += 1
     }
     return entry
   }
 
   // ---- spec 13: worklog ----
-  recordWorklog(entry: WorklogEntry): WorklogEntry {
-    return pushCapped(this.worklog, entry, WORKLOG_CAP)
+  recordWorklog(entry: WorklogEntry, scopeKey: string): WorklogEntry {
+    return pushCapped(this.worklogOf(scopeKey), entry, WORKLOG_CAP)
   }
 
   // ---- spec 95: cost accounting ----
-  /** Running per-stage totals, kept beside the ring so eviction cannot roll them back. */
-  private readonly stageCosts = new Map<string, { tokens: number; latencyMs: number; risk: number }>()
-
-  recordCost(entry: CostLedgerEntry): void {
-    pushCapped(this.costLedger, entry, COST_LEDGER_CAP)
+  recordCost(entry: CostLedgerEntry, scopeKey: string): void {
+    const scope = this.scopeOf(scopeKey)
+    pushCapped(scope.costLedger, entry, COST_LEDGER_CAP)
     // Re-summing the retained entries made the "running stage cost" shrink once
     // the ring dropped a booking, so budget numbers moved backwards.
-    const running = this.stageCosts.get(entry.stage) ?? { tokens: 0, latencyMs: 0, risk: 0 }
-    this.stageCosts.set(entry.stage, {
+    const running = scope.stageCosts.get(entry.stage) ?? { tokens: 0, latencyMs: 0, risk: 0 }
+    scope.stageCosts.set(entry.stage, {
       tokens: running.tokens + entry.tokens,
       latencyMs: running.latencyMs + entry.latencyMs,
       risk: running.risk + entry.riskWeight,
     })
   }
 
-  stageCost(stage: string): { tokens: number; latencyMs: number; risk: number } {
-    return this.stageCosts.get(stage) ?? { tokens: 0, latencyMs: 0, risk: 0 }
+  stageCost(stage: string, scopeKey: string): { tokens: number; latencyMs: number; risk: number } {
+    return this.scopeOf(scopeKey).stageCosts.get(stage) ?? { tokens: 0, latencyMs: 0, risk: 0 }
   }
 
   // ---- spec 89: weighted pass score ----
@@ -523,8 +626,8 @@ export class Fable51Policy extends Service {
   }
 
   /** Record a pass into lineage + snapshot boundary (specs 34, 38, 69). */
-  recordPass(pass: ReasoningPass): ReasoningPass {
-    this.lineage.record(pass)
+  recordPass(pass: ReasoningPass, scopeKey: string): ReasoningPass {
+    this.lineageOf(scopeKey).record(pass)
     // Audit protection stays opt-in via lineage.protect: protecting every pass made the GC keep-set everything.
     return pass
   }

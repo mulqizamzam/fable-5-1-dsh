@@ -7,6 +7,7 @@
  * ctx.fable51 never resolves (verified before writing this file).
  */
 import { describe, it } from 'node:test'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import assert from 'node:assert/strict'
 import { Context } from '@deepseek-ai/cordis'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -158,14 +159,14 @@ describe('spec 34, reasoning-dag', () => {
       const leaf = await run(ctx, 'reasoning-dag', { passId: 'leaf', deps: ['mid', 'root'] })
       assert.deepEqual(leaf.output, { recorded: true, ancestors: ['mid', 'root'] })
 
-      const recorded = ctx.fable51.lineage.get('leaf')
+      const recorded = ctx.fable51.lineageOf(DEFAULT_SCOPE).get('leaf')
       assert.ok(recorded, 'the pass must be in the lineage')
       assert.equal(recorded.verdict, 'contributed')
       assert.equal(recorded.parentId, 'mid', 'the first dep carries the parent edge')
       assert.deepEqual(recorded.deps, ['mid', 'root'], 'every dep stays recorded as an edge')
       assert.equal(recorded.score.weighted, recorded.score.evidence + recorded.score.coherence + recorded.score.coverage - recorded.score.contradiction)
-      assert.deepEqual(ctx.fable51.lineage.children('mid'), ['leaf'])
-      assert.deepEqual(ctx.fable51.lineage.ancestors('leaf'), ['mid', 'root'])
+      assert.deepEqual(ctx.fable51.lineageOf(DEFAULT_SCOPE).children('mid'), ['leaf'])
+      assert.deepEqual(ctx.fable51.lineageOf(DEFAULT_SCOPE).ancestors('leaf'), ['mid', 'root'])
     } finally {
       await ctx.fiber.dispose()
     }
@@ -176,11 +177,11 @@ describe('spec 34, reasoning-dag', () => {
     try {
       const first = await run(ctx, 'reasoning-dag', { passId: 'root', deps: [] })
       assert.equal(first.rerun, false)
-      const before = ctx.fable51.lineage.size()
+      const before = ctx.fable51.lineageOf(DEFAULT_SCOPE).size()
       // Effectful: the old unconditional cache replayed the first answer, so the append-only guard was never reached.
       const reason = await runFails(ctx, 'reasoning-dag', { passId: 'root', deps: [] })
       assert.match(reason, /pass root is already recorded/)
-      assert.equal(ctx.fable51.lineage.size(), before, 'a rejected duplicate must not double-record (spec 19)')
+      assert.equal(ctx.fable51.lineageOf(DEFAULT_SCOPE).size(), before, 'a rejected duplicate must not double-record (spec 19)')
     } finally {
       await ctx.fiber.dispose()
     }

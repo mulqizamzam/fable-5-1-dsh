@@ -17,6 +17,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import { PassLineage } from '../../src/state/lineage.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import { SnapshotStore } from '../../src/state/snapshots.ts'
 import { PolicyRegistry } from '../../src/state/registry.ts'
 import { canonicalize, fingerprint } from '../../src/state/cache.ts'
@@ -169,9 +170,9 @@ describe('audit, hooks (spec 6)', () => {
           waterfall(t: unknown, n: string, p: unknown, next: () => Promise<unknown>): Promise<unknown>
         }).waterfall(ctx, 'agent/pre-step', { messages, turn: 1, step: 1 }, async () => ({ kind: 'enter' }))
       await preStep([{ content: 'please research this topic' }])
-      const once = ctx.fable51.episode(DEFAULT_SESSION).effortTier
+      const once = ctx.fable51.episode(DEFAULT_SCOPE).effortTier
       await preStep([{ content: 'please research this topic' }, { content: 'still working' }])
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).effortTier, once, 'one search signal escalates one rung, not one per step')
+      assert.equal(ctx.fable51.episode(DEFAULT_SCOPE).effortTier, once, 'one search signal escalates one rung, not one per step')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -184,11 +185,11 @@ describe('audit, policy service (specs 95, 28)', () => {
     try {
       const svc = ctx.fable51
       for (let i = 0; i < 5000; i += 1) {
-        svc.recordCost({ stage: 'pass:p1', tokens: 100, latencyMs: 10, riskWeight: 1, at: i })
+        svc.recordCost({ stage: 'pass:p1', tokens: 100, latencyMs: 10, riskWeight: 1, at: i }, DEFAULT_SCOPE)
       }
-      const before = svc.stageCost('pass:p1')
-      svc.recordCost({ stage: 'pass:other', tokens: 1, latencyMs: 1, riskWeight: 1, at: 5001 })
-      const after = svc.stageCost('pass:p1')
+      const before = svc.stageCost('pass:p1', DEFAULT_SCOPE)
+      svc.recordCost({ stage: 'pass:other', tokens: 1, latencyMs: 1, riskWeight: 1, at: 5001 }, DEFAULT_SCOPE)
+      const after = svc.stageCost('pass:p1', DEFAULT_SCOPE)
       assert.ok(after.tokens >= before.tokens, 'running stage cost must never decrease')
       assert.ok(after.risk >= before.risk, 'booked risk must never decrease')
       assert.equal(after.tokens, before.tokens)
@@ -244,7 +245,7 @@ describe('audit, tools that failed open on unvalidated arguments', () => {
     try {
       await call(ctx, 'timeboxing', { stage: 'extract', elapsedMs: 700_000 })
       await call(ctx, 'timeboxing', { stage: 'extract', elapsedMs: 900_000 })
-      const ids = ctx.fable51.snapshots.ids().filter((id) => id.startsWith('extract-timebox'))
+      const ids = ctx.fable51.snapshotsOf(DEFAULT_SCOPE).ids().filter((id) => id.startsWith('extract-timebox'))
       assert.equal(ids.length, 2, 'the second expiry must not overwrite the first expiry record')
     } finally {
       await ctx.fiber.dispose()
@@ -380,10 +381,10 @@ describe('audit, tools that failed open on unvalidated arguments', () => {
     const ctx = await setup()
     try {
       const svc = ctx.fable51
-      for (const id of ['a', 'b', 'c']) svc.recordPass(pass(id))
+      for (const id of ['a', 'b', 'c']) svc.recordPass(pass(id), DEFAULT_SCOPE)
       const gc = await call(ctx, 'reasoning-garbage-collection', { liveIds: [], keepLastN: -1 })
       assert.equal(gc.ok, false, 'a negative keep-last-N is a typo, not "keep none"')
-      assert.equal(svc.lineage.size(), 3, 'no pass may be collected from an invalid call')
+      assert.equal(svc.lineageOf(DEFAULT_SCOPE).size(), 3, 'no pass may be collected from an invalid call')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -393,10 +394,10 @@ describe('audit, tools that failed open on unvalidated arguments', () => {
     const ctx = await setup()
     try {
       const svc = ctx.fable51
-      svc.recordPass(pass('keep-me'))
+      svc.recordPass(pass('keep-me'), DEFAULT_SCOPE)
       const gc = await call(ctx, 'reasoning-garbage-collection', { keepLastN: 0 })
       assert.equal(gc.ok, false, 'an omitted liveIds must not empty the whole lineage')
-      assert.equal(svc.lineage.size(), 1, 'no pass may be collected from an invalid call')
+      assert.equal(svc.lineageOf(DEFAULT_SCOPE).size(), 1, 'no pass may be collected from an invalid call')
     } finally {
       await ctx.fiber.dispose()
     }

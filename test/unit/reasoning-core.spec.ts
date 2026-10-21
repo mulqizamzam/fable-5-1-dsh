@@ -23,6 +23,7 @@ import Fable51Policy from '../../src/index.ts'
 import { reasoningCoreTools } from '../../src/tools/reasoning-core.ts'
 import { defineTool } from '../../src/tools/shared.ts'
 import { fingerprint } from '../../src/state/cache.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 import { DEFAULT_SESSION } from '../../src/state/episode.ts'
 
 const TOOL_NAMES = [
@@ -52,7 +53,7 @@ async function setup(): Promise<Context> {
   for (const spec of reasoningCoreTools()) {
     const name = `fable51_${spec.name}`
     if (registered.has(name)) continue
-    ctx.tools.register(defineTool(spec, { service: ctx.fable51, sessionKey: DEFAULT_SESSION }))
+    ctx.tools.register(defineTool(spec, { service: ctx.fable51, sessionKey: DEFAULT_SESSION, scopeKey: DEFAULT_SCOPE }))
   }
   return ctx
 }
@@ -149,11 +150,11 @@ describe('fable51 namespace', () => {
     try {
       await run(ctx, 'fable51_chain-vs-tree', { branchFactor: 2 })
       await run(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 1 })
-      const forkLines = ctx.fable51.worklog.filter((entry) => entry.stage === 'tool:fable51_reasoning-forking')
-      const chainLines = ctx.fable51.worklog.filter((entry) => entry.stage === 'tool:fable51_chain-vs-tree')
+      const forkLines = ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((entry) => entry.stage === 'tool:fable51_reasoning-forking')
+      const chainLines = ctx.fable51.worklogOf(DEFAULT_SCOPE).filter((entry) => entry.stage === 'tool:fable51_chain-vs-tree')
       assert.equal(forkLines.length, 1, 'one worklog line per execution for the forking stage')
       assert.equal(chainLines.length, 1, 'one worklog line per execution for the chain-vs-tree stage')
-      assert.ok(ctx.fable51.worklog.length > forkLines.length, 'the worklog array holds other stages, never count it whole')
+      assert.ok(ctx.fable51.worklogOf(DEFAULT_SCOPE).length > forkLines.length, 'the worklog array holds other stages, never count it whole')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -167,7 +168,7 @@ describe('spec 31, reasoning-forking', () => {
       const fork = await runIdempotent(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 2 })
       assert.equal(fork.spec, '31')
       assert.equal(fork.output.decision, 'fork')
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).forksThisStage, 2, 'the repeated fork must consume the stage budget twice, a cache hit skipped recordFork')
+      assert.equal(ctx.fable51.episode(DEFAULT_SCOPE).forksThisStage, 2, 'the repeated fork must consume the stage budget twice, a cache hit skipped recordFork')
       const merge = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 3, budgetLeft: 0 })
       assert.equal(merge.output.decision, 'merge')
       const keep = await run(ctx, 'fable51_reasoning-forking', { candidateCount: 1, budgetLeft: 0 })
@@ -273,18 +274,18 @@ describe('spec 38, reasoning-checkpoint', () => {
       const res = await runIdempotent(ctx, 'fable51_reasoning-checkpoint', { passId: 'p7', state: { turn: 2, note: 'boundary' } })
       assert.equal(res.spec, '38')
       assert.equal(res.output.snapshotId, 'p7')
-      const snapshot = ctx.fable51.snapshots.get('p7')
+      const snapshot = ctx.fable51.snapshotsOf(DEFAULT_SCOPE).get('p7')
       assert.ok(snapshot, 'the snapshot must live in the service snapshot index')
       assert.equal(snapshot?.hash, res.output.hash)
       assert.equal(snapshot?.hash, fingerprint({ turn: 2, note: 'boundary' }))
-      assert.equal(ctx.fable51.snapshots.latest()?.id, 'p7')
-      assert.deepEqual(ctx.fable51.snapshots.ids(), ['p7'], 'the snapshot store is keyed by id, so a repeat checkpoint replaces rather than appends')
+      assert.equal(ctx.fable51.snapshotsOf(DEFAULT_SCOPE).latest()?.id, 'p7')
+      assert.deepEqual(ctx.fable51.snapshotsOf(DEFAULT_SCOPE).ids(), ['p7'], 'the snapshot store is keyed by id, so a repeat checkpoint replaces rather than appends')
       // defect guard: a cache hit would replay p7 and leave the other pass newest,
       // because the write never ran
       await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p8', state: { turn: 3 } })
       const rewritten = await run(ctx, 'fable51_reasoning-checkpoint', { passId: 'p7', state: { turn: 2, note: 'boundary' } })
       assert.equal(rewritten.rerun, false, 'the repeated checkpoint must re-execute, not replay')
-      assert.equal(ctx.fable51.snapshots.latest()?.id, 'p7', 'the repeated checkpoint must really write p7 again, a replayed answer would leave p8 newest')
+      assert.equal(ctx.fable51.snapshotsOf(DEFAULT_SCOPE).latest()?.id, 'p7', 'the repeated checkpoint must really write p7 again, a replayed answer would leave p8 newest')
     } finally {
       await ctx.fiber.dispose()
     }
@@ -442,7 +443,7 @@ describe('spec 45, merge-strategy', () => {
       assert.equal(union.spec, '45')
       assert.deepEqual(union.output.merged, ['a', 'b', 'c'])
       assert.equal(union.output.strategy, 'union')
-      assert.equal(ctx.fable51.episode(DEFAULT_SESSION).mergesThisStage, 2, 'the repeated merge must consume the stage budget twice, a cache hit skipped recordMerge')
+      assert.equal(ctx.fable51.episode(DEFAULT_SCOPE).mergesThisStage, 2, 'the repeated merge must consume the stage budget twice, a cache hit skipped recordMerge')
       const intersection = await run(ctx, 'fable51_merge-strategy', { strategy: 'intersection', sets })
       assert.deepEqual(intersection.output.merged, ['b', 'c'])
       const weighted = await run(ctx, 'fable51_merge-strategy', { strategy: 'weighted', sets: [['a', 'b'], ['b', 'a']] })

@@ -65,6 +65,19 @@ export interface Fable51Config {
   registry: {
     policies: Array<{ id: string; version: string; owner: string; active: boolean; hash: string }>
   }
+  /**
+   * Tenant isolation: the boundary between two users of one host.
+   *
+   * `mode` picks the boundary. `cwd` puts a session in the tenant of its
+   * working directory, which is the boundary a host already draws. `session`
+   * makes every session its own tenant. `none` restores one shared tenant
+   * for the whole host.
+   */
+  tenants: {
+    mode: 'cwd' | 'session' | 'none'
+    defaultKey: string
+    maxTenants: number
+  }
 }
 
 export class ConfigError extends Error {
@@ -119,7 +132,7 @@ function knownKeys(path: string, value: Record<string, unknown>, keys: readonly 
  */
 export function validateConfig(raw: unknown): Fable51Config {
   const root = obj(raw, 'config')
-  knownKeys('config', root, ['context', 'effort', 'budget', 'reasoning', 'determinism', 'sandbox', 'hitl', 'observability', 'registry'])
+  knownKeys('config', root, ['context', 'effort', 'budget', 'reasoning', 'determinism', 'sandbox', 'hitl', 'observability', 'registry', 'tenants'])
   const context = obj(root.context, 'config.context')
   knownKeys('config.context', context, ['compactAt', 'dropAt', 'spillAt', 'spillPath'])
   const compactAt = num(context.compactAt, 'config.context.compactAt', { min: 0.1, max: 0.99 })
@@ -214,6 +227,15 @@ export function validateConfig(raw: unknown): Fable51Config {
     }
   })
 
+  const tenants = obj(root.tenants, 'config.tenants')
+  knownKeys('config.tenants', tenants, ['mode', 'defaultKey', 'maxTenants'])
+  const tenantMode = str(tenants.mode, 'config.tenants.mode')
+  if (tenantMode !== 'cwd' && tenantMode !== 'session' && tenantMode !== 'none') {
+    fail('config.tenants.mode', "must be 'cwd', 'session' or 'none'")
+  }
+  const defaultKey = str(tenants.defaultKey, 'config.tenants.defaultKey')
+  const maxTenants = num(tenants.maxTenants, 'config.tenants.maxTenants', { min: 1, max: 4096, integer: true })
+
   return {
     context: { compactAt, dropAt, spillAt, spillPath },
     effort: { defaultTier: defaultTier as Fable51Config['effort']['defaultTier'], escalateOn: effort.escalateOn as Fable51Config['effort']['escalateOn'], costCeiling },
@@ -224,5 +246,6 @@ export function validateConfig(raw: unknown): Fable51Config {
     hitl: { requireOnIrreversible, requireOnExternal, requireAboveCost },
     observability: { traceLevel: traceLevel as Fable51Config['observability']['traceLevel'], logFormat },
     registry: { policies },
+    tenants: { mode: tenantMode as Fable51Config['tenants']['mode'], defaultKey, maxTenants },
   }
 }

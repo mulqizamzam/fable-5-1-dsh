@@ -16,6 +16,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import Fable51Policy from '../../src/index.ts'
 import type { ReasoningPass } from '../../src/types/pass.ts'
 import { DEFAULT_SESSION } from '../../src/state/episode.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 
 async function setup() {
   const ctx = new Context()
@@ -45,11 +46,11 @@ describe('Gate 6, synthetic session end-to-end', () => {
       assert.equal((spill.value as { output: { action: string } }).output.action, 'spill')
       // --- verification gate FAILS then ROLLBACK (specs 5, 18, 46) ---
       const svc = ctx.fable51
-      svc.recordGate({ gate: 'e2e-check', cmd: 'compare', expected: 'A', actual: 'B', pass: false, at: Date.now() })
-      assert.equal(svc.gateLog.at(-1)?.pass, false)
-      const checkpoint = svc.snapshots.create('pre-merge', { stage: 'reasoning', good: true })
-      svc.snapshots.create('post-merge', { stage: 'reasoning', good: false })
-      const diff = svc.snapshots.diff('pre-merge', 'post-merge')
+      svc.recordGate({ gate: 'e2e-check', cmd: 'compare', expected: 'A', actual: 'B', pass: false, at: Date.now() }, DEFAULT_SCOPE)
+      assert.equal(svc.gateLogOf(DEFAULT_SCOPE).at(-1)?.pass, false)
+      const checkpoint = svc.snapshotsOf(DEFAULT_SCOPE).create('pre-merge', { stage: 'reasoning', good: true })
+      svc.snapshotsOf(DEFAULT_SCOPE).create('post-merge', { stage: 'reasoning', good: false })
+      const diff = svc.snapshotsOf(DEFAULT_SCOPE).diff('pre-merge', 'post-merge')
       assert.deepEqual(diff.changed, ['good'], 'regression must be visible in the diff')
       // --- reasoning fork + merge via lineage (specs 34, 39, 69) ---
       const fork: ReasoningPass = {
@@ -59,9 +60,9 @@ describe('Gate 6, synthetic session end-to-end', () => {
         startedAt: 0, endedAt: 1, tokens: 100, latencyMs: 5, unverified: [],
       }
       const merge: ReasoningPass = { ...fork, id: 'merge-1', parentId: 'fork-1', outHash: 'sha256:o2' }
-      svc.recordPass(fork)
-      svc.recordPass(merge)
-      assert.deepEqual(svc.lineage.ancestors('merge-1'), ['fork-1'])
+      svc.recordPass(fork, DEFAULT_SCOPE)
+      svc.recordPass(merge, DEFAULT_SCOPE)
+      assert.deepEqual(svc.lineageOf(DEFAULT_SCOPE).ancestors('merge-1'), ['fork-1'])
       // --- fork decision + order-independent merge through the tool surface (specs 31, 91) ---
       const forkDecision = await execute(ctx, 'fable51_reasoning-forking', { candidateCount: 2, budgetLeft: 5000 })
       assert.equal((forkDecision.value as { output: { decision: string } }).output.decision, 'fork')
@@ -73,28 +74,28 @@ describe('Gate 6, synthetic session end-to-end', () => {
         'merge must be order-independent (spec 91)',
       )
       // --- cost accounting (spec 95) ---
-      svc.recordCost({ stage: 'reasoning', tokens: 1000, latencyMs: 50, riskWeight: 0, at: Date.now() })
-      assert.deepEqual(svc.stageCost('reasoning'), { tokens: 1000, latencyMs: 50, risk: 0 })
+      svc.recordCost({ stage: 'reasoning', tokens: 1000, latencyMs: 50, riskWeight: 0, at: Date.now() }, DEFAULT_SCOPE)
+      assert.deepEqual(svc.stageCost('reasoning', DEFAULT_SCOPE), { tokens: 1000, latencyMs: 50, risk: 0 })
       // --- escalation ladder advances one rung per failure (spec 28) ---
-      assert.equal(svc.nextRung(DEFAULT_SESSION), 'retry')
-      assert.equal(svc.nextRung(DEFAULT_SESSION), 'replan')
-      assert.equal(svc.nextRung(DEFAULT_SESSION), 'downgrade')
+      assert.equal(svc.nextRung(DEFAULT_SCOPE), 'retry')
+      assert.equal(svc.nextRung(DEFAULT_SCOPE), 'replan')
+      assert.equal(svc.nextRung(DEFAULT_SCOPE), 'downgrade')
       // --- replan budget: third replan escalates (spec 14) ---
-      assert.equal(svc.replan(DEFAULT_SESSION).escalate, false)
-      assert.equal(svc.replan(DEFAULT_SESSION).escalate, false)
-      assert.equal(svc.replan(DEFAULT_SESSION).escalate, true)
+      assert.equal(svc.replan(DEFAULT_SCOPE).escalate, false)
+      assert.equal(svc.replan(DEFAULT_SCOPE).escalate, false)
+      assert.equal(svc.replan(DEFAULT_SCOPE).escalate, true)
       // --- provenance + partial delivery (specs 7, 20) ---
       assert.equal(svc.tag('the sky is blue', { kind: 'fetch', url: 'https://example.test' }), '[fetch:https://example.test] the sky is blue')
       // --- turn end: checkpoint + handoff (specs 10, 38) ---
       ctx.emit('session/event', {} as never, { type: 'turn/end' } as never)
-      const late = svc.snapshots.latest()
+      const late = svc.snapshotsOf(DEFAULT_SCOPE).latest()
       assert.ok(late && late.id.startsWith('turn-end-'), 'turn boundary must checkpoint')
       // --- worklog emitted with unverified list explicit (spec 13) ---
-      const stages = svc.worklog.map((w) => w.stage)
+      const stages = svc.worklogOf(DEFAULT_SCOPE).map((w) => w.stage)
       assert.ok(stages.some((s) => s.startsWith('session:')), 'handoff worklog present')
       // --- session end: postmortem (spec 30) ---
       ctx.emit('session/disposed', {} as never)
-      assert.equal(svc.worklog.at(-1)?.stage, 'session:end')
+      assert.equal(svc.worklogOf(DEFAULT_SCOPE).at(-1)?.stage, 'session:end')
       // --- resume determinism (spec 25): same seed, same fingerprint ---
       assert.equal(svc.seed(), svc.config.determinism.seed)
     } finally {

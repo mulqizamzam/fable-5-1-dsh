@@ -209,14 +209,14 @@ export function budgetAdvisorTools(): ToolSpec[] {
           sampleSize: { type: 'integer' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const taskClass = requireTaskClass(record)
         const historyWindow = typeof record.historyWindow === 'number' ? record.historyWindow : 5000
         const minSamples = typeof record.minSamplesPerStage === 'number' ? record.minSamplesPerStage : 2
 
         // Get recent cost ledger entries
-        const allEntries = service.costLedger
+        const allEntries = service.costLedgerOf(scopeKey)
         const recentEntries = allEntries.slice(-historyWindow)
 
         if (recentEntries.length === 0) {

@@ -186,7 +186,7 @@ export function reasoningCoreTools(): ToolSpec[] {
           decision: { type: 'string', enum: ['fork', 'merge', 'keep', 'discard'] },
         },
       },
-      execute(args, { service, sessionKey }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const candidateCount = requireCount(record, 'candidateCount')
         const budgetLeft = requireCount(record, 'budgetLeft')
@@ -194,7 +194,7 @@ export function reasoningCoreTools(): ToolSpec[] {
         // budgetLeft is advisory; the service counter is the hard cap, and
         // that counter belongs to this session alone.
         const decision: ForkDecision = candidateCount > 1
-          ? budgetLeft > 0 && service.recordFork(sessionKey) ? 'fork' : 'merge'
+          ? budgetLeft > 0 && service.recordFork(scopeKey) ? 'fork' : 'merge'
           : candidateCount === 1 ? 'keep' : 'discard'
         return { decision }
       },
@@ -307,11 +307,11 @@ export function reasoningCoreTools(): ToolSpec[] {
           hash: { type: 'string', description: 'content fingerprint of the checkpointed state' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const passId = requireString(record, 'passId')
         const state = requireObject(record.state, 'state')
-        const snapshot = service.snapshots.create(passId, state)
+        const snapshot = service.snapshotsOf(scopeKey).create(passId, state)
         return { snapshotId: snapshot.id, hash: snapshot.hash }
       },
     },
@@ -506,7 +506,7 @@ export function reasoningCoreTools(): ToolSpec[] {
           exceeded: { type: 'boolean' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const branches = requireCount(record, 'branches')
         const maxForkDepth = service.config.budget.maxForkDepth
@@ -538,7 +538,7 @@ export function reasoningCoreTools(): ToolSpec[] {
           strategy: { type: 'string', enum: ['union', 'intersection', 'weighted'] },
         },
       },
-      execute(args, { service, sessionKey }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const strategy = requireMergeStrategy(record)
         const sets = requireStringSets(record.sets, 'sets')
@@ -548,7 +548,7 @@ export function reasoningCoreTools(): ToolSpec[] {
           : ordered
         // spec 96: every merge consumes one slot of the per-stage merge budget,
         // so past the cap the merge is refused instead of silently proceeding.
-        if (!service.recordMerge(sessionKey)) {
+        if (!service.recordMerge(scopeKey)) {
           throw new Error(`per-stage merge budget spent (maxMergesPerStage=${service.config.budget.maxMergesPerStage})`)
         }
         return { merged, strategy }
@@ -578,13 +578,13 @@ export function reasoningCoreTools(): ToolSpec[] {
           },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         requireString(record, 'passId')
         // Rollback targets the most recent CONSISTENT checkpoint: a snapshot
         // marked unverified (timeout/timebox) is not a state to revert to
         // (specs 18/46).
-        return { revertedTo: service.lastVerifiedSnapshot()?.id ?? null }
+        return { revertedTo: service.lastVerifiedSnapshot(scopeKey)?.id ?? null }
       },
     },
     {
@@ -614,7 +614,7 @@ export function reasoningCoreTools(): ToolSpec[] {
           score: SCORE_SCHEMA,
         },
       },
-      execute(args, { service }): ReasoningTrace {
+      execute(args, { service, scopeKey }): ReasoningTrace {
         const record = asRecord(args)
         if (!Object.hasOwn(record, 'input')) throw new Error('input is required')
         if (!Object.hasOwn(record, 'output')) throw new Error('output is required')

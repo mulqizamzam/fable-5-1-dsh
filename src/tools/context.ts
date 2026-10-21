@@ -216,11 +216,11 @@ export function contextTools(): ToolSpec[] {
         required: ['used', 'alert', 'stop', 'limit'],
         properties: { used: { type: 'number' }, alert: { type: 'boolean' }, stop: { type: 'boolean' }, limit: { type: 'number' } },
       },
-      execute(args, { service, sessionKey }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const stage = requireString(record, 'stage')
         const tokens = requireNumber(record, 'tokens', 0, Number.MAX_SAFE_INTEGER)
-        const budget = service.addStageTokens(sessionKey, stage, tokens)
+        const budget = service.addStageTokens(scopeKey, stage, tokens)
         return { used: budget.used, alert: budget.alert, stop: budget.stop, limit: service.config.budget.stageTokenBudget }
       },
     },
@@ -241,13 +241,13 @@ export function contextTools(): ToolSpec[] {
         required: ['granted', 'headroom'],
         properties: { granted: { type: 'number' }, headroom: { type: 'number' } },
       },
-      execute(args, { service, sessionKey }) {
+      execute(args, { service, scopeKey }) {
         const record = asRecord(args)
         const requested = requireNumber(record, 'requested', 0, Number.MAX_SAFE_INTEGER)
         const limit = service.config.budget.stageTokenBudget
         // The headroom is this session's: another session's spend must not
         // eat into this run's interleaved-thinking allowance.
-        const used = [...service.episode(sessionKey).stageTokens.values()].reduce((a, b) => a + b, 0)
+        const used = [...service.episode(scopeKey).stageTokens.values()].reduce((a, b) => a + b, 0)
         const headroom = Math.max(0, limit - used)
         return { granted: Math.min(requested, headroom), headroom }
       },

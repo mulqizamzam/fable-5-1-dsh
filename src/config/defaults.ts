@@ -45,5 +45,6 @@ export function defaults(): Fable51Config {
     hitl: { requireOnIrreversible: true, requireOnExternal: true, requireAboveCost: 500_000 },
     observability: { traceLevel: 'stage', logFormat: 'line' },
     registry: { policies: [] },
+    tenants: { mode: 'cwd', defaultKey: 'default', maxTenants: 64 },
   }
 }

@@ -15,6 +15,7 @@ import Fable51Policy from '../../src/index.ts'
 import { budgetAdvisorTools } from '../../src/tools/budget-advisor.ts'
 import { defineTool } from '../../src/tools/shared.ts'
 import { DEFAULT_SESSION } from '../../src/state/episode.ts'
+import { DEFAULT_SCOPE } from '../../src/state/tenant.ts'
 
 const TOOL_NAME = 'fable51_budget-advisor'
 
@@ -29,7 +30,7 @@ async function setup(): Promise<Context> {
   for (const spec of budgetAdvisorTools()) {
     const name = `fable51_${spec.name}`
     if (registered.has(name)) continue
-    ctx.tools.register(defineTool(spec, { service: ctx.fable51, sessionKey: DEFAULT_SESSION }))
+    ctx.tools.register(defineTool(spec, { service: ctx.fable51, sessionKey: DEFAULT_SESSION, scopeKey: DEFAULT_SCOPE }))
   }
   return ctx
 }
@@ -132,7 +133,7 @@ describe('fable51 budget-advisor tools', () => {
           latencyMs: 1200,
           riskWeight: 0,
           at: Date.now(),
-        })
+        }, DEFAULT_SCOPE)
       }
 
       // minSamplesPerStage 2 drops the advisor's own single booking, so the
@@ -167,8 +168,8 @@ describe('fable51 budget-advisor tools', () => {
     const contexts = await Promise.all([setup(), setup()])
     try {
       for (let i = 0; i < 10; i += 1) {
-        contexts[0]?.fable51.recordCost({ stage: 'tool:small', tokens: 100_000, latencyMs: 500, riskWeight: 0, at: Date.now() })
-        contexts[1]?.fable51.recordCost({ stage: 'tool:big', tokens: 200_000, latencyMs: 900, riskWeight: 0, at: Date.now() })
+        contexts[0]?.fable51.recordCost({ stage: 'tool:small', tokens: 100_000, latencyMs: 500, riskWeight: 0, at: Date.now() }, DEFAULT_SCOPE)
+        contexts[1]?.fable51.recordCost({ stage: 'tool:big', tokens: 200_000, latencyMs: 900, riskWeight: 0, at: Date.now() }, DEFAULT_SCOPE)
       }
 
       const small = await runAdvisor(contexts[0]!, { taskClass: 'open', minSamplesPerStage: 2 })
@@ -191,7 +192,7 @@ describe('fable51 budget-advisor tools', () => {
   it('excludes a stage below the minimum sample count', async () => {
     const ctx = await setup()
     try {
-      ctx.fable51.recordCost({ stage: 'tool:rare', tokens: 1000, latencyMs: 10, riskWeight: 0, at: Date.now() })
+      ctx.fable51.recordCost({ stage: 'tool:rare', tokens: 1000, latencyMs: 10, riskWeight: 0, at: Date.now() }, DEFAULT_SCOPE)
       const out = await runAdvisor(ctx, { taskClass: 'search', minSamplesPerStage: 2 })
 
       assert.equal(out.sampleSize, 1)

@@ -113,7 +113,7 @@ export function costTools(): ToolSpec[] {
           risk: { type: 'number', description: 'Total risk weight booked for this pass stage.' },
         },
       },
-      execute(args, { service }): { tokens: number; latencyMs: number; risk: number } {
+      execute(args, { service, scopeKey }): { tokens: number; latencyMs: number; risk: number } {
         const record = args as Record<string, unknown>
         const passId = record['passId']
         if (typeof passId !== 'string' || passId.length === 0) throw new Error('passId must be a non-empty string')
@@ -128,8 +128,8 @@ export function costTools(): ToolSpec[] {
           latencyMs: latencyMs + verifierMs,
           riskWeight: retries,
           at: Date.now(),
-        })
-        return service.stageCost(stage)
+        }, scopeKey)
+        return service.stageCost(stage, scopeKey)
       },
     },
     {
@@ -164,7 +164,7 @@ export function costTools(): ToolSpec[] {
           action: { type: 'string', enum: ['ok', 'log+degrade'], description: 'Required action given the breaches.' },
         },
       },
-      execute(args, { service }): { breaches: string[]; action: 'ok' | 'log+degrade' } {
+      execute(args, { service, scopeKey }): { breaches: string[]; action: 'ok' | 'log+degrade' } {
         const record = args as Record<string, unknown>
         const { targets } = record as { targets?: Record<string, unknown> }
         // Without this the breach books under the shared stage `pass:` and merges
@@ -192,7 +192,7 @@ export function costTools(): ToolSpec[] {
             verdict: 'neutral',
             unverified: breaches,
             at: Date.now(),
-          })
+          }, scopeKey)
         }
         return { breaches, action }
       },

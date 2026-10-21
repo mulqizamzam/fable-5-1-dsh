@@ -21,7 +21,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDispatchExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { Fable51Policy } from '../policy-service.ts'
-import { sessionKeyFromExec } from '../state/session-key.ts'
 
 export function wireToolsExecute(ctx: Context): void {
   ctx.on('tools/execute', async (exec: ToolDispatchExecution, next: () => Promise<ToolExecutionResult>): Promise<ToolExecutionResult> => {
@@ -31,7 +30,9 @@ export function wireToolsExecute(ctx: Context): void {
     // itself holds is a deadlock, and the cap would punish a dependency
     // chain instead of a fan-out.
     if (exec.parent !== undefined) return next()
-    const key = sessionKeyFromExec(exec)
+    // The slot belongs to the tenant scope, so two tenants of one host never
+    // share a slot and one tenant's queue never blocks another's.
+    const key = svc.scopeKeyOfExec(exec)
     let granted = false
     try {
       granted = await svc.acquireSlot(key, exec.signal)

@@ -44,7 +44,7 @@ export function opsTools(): ToolSpec[] {
           snapshotId: { type: 'string', description: 'Expiry snapshot id, present only when expired.' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { stage, elapsedMs } = args as { stage: string; elapsedMs: number }
         // elapsedMs is compared against the deadline and echoed into the declared
         // number field; a string would coerce into a bogus verdict and be returned as a string.
@@ -54,7 +54,7 @@ export function opsTools(): ToolSpec[] {
         const deadline = service.config.budget.stageTimeoutMs
         if (elapsedMs < deadline) return { expired: false, elapsedMs }
         // A constant id made every expiry of a stage overwrite the previous one.
-        const snapshot = service.snapshots.create(`${stage}-timebox-${elapsedMs}`, { stage, elapsedMs, verdict: 'unverified' })
+        const snapshot = service.snapshotsOf(scopeKey).create(`${stage}-timebox-${elapsedMs}`, { stage, elapsedMs, verdict: 'unverified' })
         service.recordWorklog({
           stage,
           output: `stage timebox of ${deadline}ms expired at ${elapsedMs}ms`,
@@ -62,7 +62,7 @@ export function opsTools(): ToolSpec[] {
           verdict: 'discarded',
           unverified: ['stage timebox expired'],
           at: Date.now(),
-        })
+        }, scopeKey)
         return { expired: true, elapsedMs, snapshotId: snapshot.id }
       },
     },
@@ -98,7 +98,7 @@ export function opsTools(): ToolSpec[] {
           logged: { type: 'boolean', enum: [true] },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { conflicts } = args as { conflicts: Array<{ source: string; value: string }> }
         let winner: string | null = null
         let winnerSource: string | null = null
@@ -117,7 +117,7 @@ export function opsTools(): ToolSpec[] {
           verdict: winnerSource === null ? 'neutral' : 'contributed',
           unverified: [],
           at: Date.now(),
-        })
+        }, scopeKey)
         return { winner, precedence: [...CONFLICT_PRECEDENCE], logged: true }
       },
     },
@@ -143,7 +143,7 @@ export function opsTools(): ToolSpec[] {
           line: { type: 'string' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { stage, verdict, tokens } = args as { stage: string; verdict: PassVerdict; tokens: number }
         // Same rule timeboxing applies: a string would be echoed into the trace
         // line and the worklog as if it were a measured token count.
@@ -160,7 +160,7 @@ export function opsTools(): ToolSpec[] {
           verdict,
           unverified: [],
           at,
-        })
+        }, scopeKey)
         return { traceId, line }
       },
     },
@@ -184,7 +184,7 @@ export function opsTools(): ToolSpec[] {
           pinnedVersions: { type: 'object' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { iteration } = args as { iteration?: unknown[] }
         const { iterationOrder, pinnedVersions } = service.config.determinism
         const base = Array.isArray(iteration) ? [...iteration] : []
@@ -214,7 +214,7 @@ export function opsTools(): ToolSpec[] {
           action: { type: 'string', enum: ['abort', 'halt'] },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { path, operation } = args as { path: string; operation: 'read' | 'write' }
         const list = service.config.sandbox.allowList[operation] ?? []
         // A DECLARED allow-list is fail-closed exact matching, so traversal, NUL and
@@ -230,7 +230,7 @@ export function opsTools(): ToolSpec[] {
             verdict: 'discarded',
             unverified: [`sandbox escape attempt: ${operation} ${path}`],
             at: Date.now(),
-          })
+          }, scopeKey)
           // An abort action is enforcement, not a report: returning the escape
           // object here would let the caller treat a denied path as a completed check.
           if (action === 'abort') {
@@ -259,7 +259,7 @@ export function opsTools(): ToolSpec[] {
           blocked: { type: 'boolean' },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { current } = args as { current: Record<string, string> }
         const pins = service.config.determinism.pinnedVersions
         const drift = Object.entries(pins)
@@ -290,7 +290,7 @@ export function opsTools(): ToolSpec[] {
           recorded: { type: 'boolean', enum: [true] },
         },
       },
-      execute(args, { service }) {
+      execute(args, { service, scopeKey }) {
         const { whatFailed, why, fix, catchingTest } = args as { whatFailed: string; why: string; fix: string; catchingTest: string }
         service.recordWorklog({
           stage: 'postmortem',
@@ -299,7 +299,7 @@ export function opsTools(): ToolSpec[] {
           verdict: 'discarded',
           unverified: [],
           at: Date.now(),
-        })
+        }, scopeKey)
         return { recorded: true }
       },
     },
