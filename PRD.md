@@ -448,7 +448,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
 | Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
-| Suite test | `pnpm test` | 287 test, 97 suite, 287 lulus, 0 gagal | lulus |
+| Suite test | `pnpm test` | 289 test, 98 suite, 289 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |
@@ -461,6 +461,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Advisor dengan ledger terisi | `test/unit/budget-advisor.spec.ts` + sesi headless | 200.000 token x 5.0 = 1.000.000, sampleSize 4 di host | lulus |
 | Antrean bandwidth mengikat di host nyata | sesi headless: 2 lalu 5 tool `fable51_*` murni paralel | peak 2 lalu peak 4 pada cap 4 | lulus |
 | Tool murni boleh paralel | `test/unit/concurrency.spec.ts` | 64 tool paralel, 28 eksklusif | lulus |
+| Sweep semua tool di host nyata | `test/unit/sweep.spec.ts` | 92 dari 92 tool menerima argumen schema-nya, 0 error host | lulus |
 | Grup paralel tidak membuat host macet | `test/unit/progress-bandwidth.spec.ts` | desain lama hang >220 detik, desain baru 38 detik | lulus |
 
 Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.

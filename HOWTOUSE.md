@@ -297,7 +297,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan seluruh suite (sekarang 287 test di 97 suite) dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 289 test di 98 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -330,7 +330,7 @@ dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
 
 **Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
-`pnpm test` menjalankan 287 test di 97 suite, semuanya lulus; `pnpm typecheck`
+`pnpm test` menjalankan 289 test di 98 suite, semuanya lulus; `pnpm typecheck`
 exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
@@ -401,5 +401,15 @@ ke ledger di antaranya: operatornya akan melihat gambar lama. Keduanya kini
 effectful, jadi selalu membaca state terkini. Audit menyeluruh atas 92 tool
 menemukan tidak ada pembaca live state lain yang lolos.
 
-**Belum diverifikasi:** tool selain yang disebut di atas tidak dipanggil
-langsung.
+**Semua 92 tool sudah dipanggil di host nyata (2026-10-21):**
+`test/unit/sweep.spec.ts` memanggil setiap tool yang terdaftar satu kali,
+dengan argumen yang diturunkan dari schema milik tool itu sendiri, lalu
+memeriksa hasilnya. Registry, hook, dan service dsh yang dipakai adalah yang
+sunggulan, jadi tool yang salah di sana salah juga di produksi. Hasilnya: 92
+dari 92 tool menerima argumen yang dijanjikan schema-nya, tidak ada yang
+gagal di level host, dan semua menjawab dengan verdict yang diizinkan
+envelope. Sweep ini yang menemukan dua pembaca live state yang menyajikan
+jawaban basi, dan sekarang jadi gerbang permanen: `pnpm test` memanggilnya
+setiap kali.
+
+**Belum diverifikasi:** tidak ada lagi butir yang tersisa.
