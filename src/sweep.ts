@@ -16,6 +16,12 @@
  * allowed to answer differently when the ledger it reads is different. A
  * leak is proven by a COUNTER that moves in the wrong tenant, and a counter
  * cannot be argued away by a normalizer.
+ *
+ * The tool sweep resolves the tenant from the session object's own working
+ * directory, so it never reaches the one surface that names a session id and
+ * never a directory: the generation hook. The sweep drives that surface in
+ * both tenants too, because a leak there would be invisible to every other
+ * check here.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -23,7 +29,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import { isDeepStrictEqual } from 'node:util'
 import { allToolSpecs } from './tools/index.ts'
 import { argsFor, sweepPassIds } from './tools/args.ts'
-import { DEFAULT_SCOPE, scopeKeyOf, tenantOfScope } from './state/tenant.ts'
+import { DEFAULT_SCOPE, DEFAULT_TENANT, scopeKeyOf, tenantOfScope } from './state/tenant.ts'
 
 /** One tenant of the sweep: a working directory, and the session in it. */
 export interface SweepTenantSpec {
@@ -88,6 +94,34 @@ const BRAVO_PROGRESS_DETAIL = 'sweep probe in the second tenant'
 const BUDGET_STAGE = 'sweep'
 const BUDGET_TOKENS = 10
 
+/**
+ * The model the sweep's generation run names.
+ *
+ * The hook charges the stage `llm:<model>`, so the name is part of the
+ * measurement: it is how the sweep finds the tokens a generation spent.
+ */
+const GENERATION_MODEL = 'sweep-model'
+
+/** The stage the generation hook charges the sweep's tokens to. */
+const GENERATION_STAGE = `llm:${GENERATION_MODEL}`
+
+/**
+ * The chunks the generation run replays.
+ *
+ * The second chunk repeats the first on purpose: the duplicate is what makes
+ * the hook write its worklog line, and that line is the only trace of the
+ * tenant the hook charged. Both tenants get the same chunks, so the two stay
+ * comparable.
+ */
+const GENERATION_CHUNKS: readonly string[] = ['sweep ', 'sweep ']
+
+/**
+ * The tokens one generation run costs.
+ *
+ * Two chunks of six characters, each charged as Math.ceil(6 / 4) = 2.
+ */
+const GENERATION_TOKENS = 4
+
 /** Call one tool as one tenant, the way the agent loop does. */
 async function callAs(
   ctx: Context,
@@ -107,6 +141,59 @@ async function callAs(
     throw new Error(`tool fable51_${name} threw: ${JSON.stringify(result.content).slice(0, 300)}`)
   }
   return result.value as unknown as Envelope
+}
+
+/**
+ * Drive one generation stream through the bundle's llm/stream hook.
+ *
+ * The hook resolves the tenant from the session id the request names, never
+ * from a directory, so this is the one call in the sweep that can charge the
+ * wrong tenant. The stream is drained because the hook accounts it in its
+ * finally block, and that block only runs when the stream ends.
+ */
+async function generateAs(ctx: Context, sessionId: string): Promise<void> {
+  async function* source(): AsyncIterable<unknown> {
+    for (const text of GENERATION_CHUNKS) yield { text }
+  }
+  // The cast is required, not laziness: the host types the waterfall's
+  // `this` as LlmRuntime, while the bundle drives it from a Context.
+  const stream = await (ctx as unknown as {
+    waterfall(t: unknown, n: string, o: unknown, next: () => AsyncIterable<unknown>): AsyncIterable<unknown>
+  }).waterfall(ctx, 'llm/stream', { model: GENERATION_MODEL, sessionId }, source)
+  for await (const _chunk of stream) {
+    // The chunks are drained, not read: the sweep measures the state the
+    // hook leaves behind, not the chunks themselves.
+  }
+}
+
+/** The tokens one tenant's episode charged to one stage. */
+function stageTokensOf(ctx: Context, scopeKey: string, stage: string): number {
+  return ctx.fable51.episode(scopeKey).stageTokens.get(stage) ?? 0
+}
+
+/**
+ * The worklog lines of one stage one tenant holds.
+ *
+ * The worklog belongs to the tenant, not to the run, so a second sweep in the
+ * same host finds the lines the first one wrote. The sweep compares this
+ * count before and after a generation, so what it measures is what this run
+ * added: a generation that lands in the wrong tenant still adds its line
+ * there, and the check still fails.
+ */
+function worklogLinesOfStage(ctx: Context, scopeKey: string, stage: string): number {
+  return ctx.fable51.worklogOf(scopeKey).filter((entry) => entry.stage === stage).length
+}
+
+/**
+ * The episodes one tenant owns.
+ *
+ * An episode is keyed by scope, so a tenant owns one per session that ran
+ * in it. Looking at a single scope would miss the others, and a leak that
+ * books into a session nobody looked at is exactly the kind that goes
+ * unnoticed.
+ */
+function episodeKeysOfTenant(ctx: Context, tenant: string): string[] {
+  return ctx.fable51.episodes.keys().filter((key) => tenantOfScope(key) === tenant)
 }
 
 /**
@@ -196,15 +283,16 @@ export async function runTenantSweep(
   // directory while the service normalizes it, and a directory with a
   // trailing slash would point the check at a bucket nobody ever writes to.
   //
-  // The session ids carry a run number because the host refuses a duplicate
-  // id. Without it, a second sweep in the same host threw instead of
-  // reporting, which is the opposite of what a repeatable check should do.
+  // The session ids carry a run number and the tenant's position, because
+  // the host refuses a duplicate id. Without the run number, a second sweep
+  // in the same host threw instead of reporting. Without the position, two
+  // tenants that happen to name the same session threw the same way.
   const runId = ++sweepRunSeq
   const runSuffix = `-${runId}`
-  const firstSession = ctx.sessions.create(SessionId(`${tenantSpecs[0]!.sessionId}-${runId}`), {
+  const firstSession = ctx.sessions.create(SessionId(`${tenantSpecs[0]!.sessionId}-${runId}-0`), {
     meta: { cwd: tenantSpecs[0]!.cwd },
   })
-  const secondSession = ctx.sessions.create(SessionId(`${tenantSpecs[1]!.sessionId}-${runId}`), {
+  const secondSession = ctx.sessions.create(SessionId(`${tenantSpecs[1]!.sessionId}-${runId}-1`), {
     meta: { cwd: tenantSpecs[1]!.cwd },
   })
   const firstScopeKey = svc.scopeKeyOfSession(firstSession)
@@ -231,8 +319,27 @@ export async function runTenantSweep(
   // to be checked against later.
   svc.recordProgress(firstScopeKey, 'stage-transition', ALPHA_PROGRESS_DETAIL)
 
+  // The generation path, in this tenant only. It runs here, between the two
+  // tool sweeps, so the other tenant is watched while the generation
+  // happens: a generation that charged the wrong tenant would show up in the
+  // snapshot of the tenant that did nothing.
+  const alphaLinesBeforeOwn = worklogLinesOfStage(ctx, firstScopeKey, GENERATION_STAGE)
+  const bravoLinesBeforeOwn = worklogLinesOfStage(ctx, secondScopeKey, GENERATION_STAGE)
+  const defaultLinesBeforeOwn = worklogLinesOfStage(ctx, DEFAULT_SCOPE, GENERATION_STAGE)
+  await generateAs(ctx, firstSession.id)
+  const alphaTokensAfterOwn = stageTokensOf(ctx, firstScopeKey, GENERATION_STAGE)
+  const bravoTokensBeforeOwn = stageTokensOf(ctx, secondScopeKey, GENERATION_STAGE)
+  const alphaLinesAfterOwn = worklogLinesOfStage(ctx, firstScopeKey, GENERATION_STAGE)
+  const bravoLinesAfterOwn = worklogLinesOfStage(ctx, secondScopeKey, GENERATION_STAGE)
+  const defaultLinesAfterOwn = worklogLinesOfStage(ctx, DEFAULT_SCOPE, GENERATION_STAGE)
+
   const afterFirst = ringCounts(ctx, firstScopeKey)
   const secondAfterFirst = ringCounts(ctx, secondScopeKey)
+  // The default tenant's rings are sampled AFTER the first generation, so
+  // the checks below that watch the default tenant also report a generation
+  // that leaked into it. Their names say "call", and a generation is a call
+  // into the service, so a leak there belongs in their report as well. The
+  // three generation checks own the generation path on their own.
   const defaultBefore = ringCounts(ctx, DEFAULT_SCOPE)
 
   record(
@@ -280,6 +387,17 @@ export async function runTenantSweep(
   }
 
   svc.recordProgress(secondScopeKey, 'stage-transition', BRAVO_PROGRESS_DETAIL)
+
+  // The generation path, in this tenant too, with the same chunks.
+  const alphaLinesBeforeSecond = worklogLinesOfStage(ctx, firstScopeKey, GENERATION_STAGE)
+  const bravoLinesBeforeSecond = worklogLinesOfStage(ctx, secondScopeKey, GENERATION_STAGE)
+  const defaultLinesBeforeSecond = worklogLinesOfStage(ctx, DEFAULT_SCOPE, GENERATION_STAGE)
+  await generateAs(ctx, secondSession.id)
+  const bravoTokensAfterOwn = stageTokensOf(ctx, secondScopeKey, GENERATION_STAGE)
+  const alphaTokensAfterSecond = stageTokensOf(ctx, firstScopeKey, GENERATION_STAGE)
+  const alphaLinesAfterSecond = worklogLinesOfStage(ctx, firstScopeKey, GENERATION_STAGE)
+  const bravoLinesAfterSecond = worklogLinesOfStage(ctx, secondScopeKey, GENERATION_STAGE)
+  const defaultLinesAfterSecond = worklogLinesOfStage(ctx, DEFAULT_SCOPE, GENERATION_STAGE)
 
   const afterSecond = ringCounts(ctx, secondScopeKey)
   const firstAfter = ringCounts(ctx, firstScopeKey)
@@ -464,6 +582,97 @@ export async function runTenantSweep(
     'a stage budget spent in one tenant is not spent in the other',
     spendInAlpha === BUDGET_TOKENS && spendInBravo === BUDGET_TOKENS,
     `alpha=${spendInAlpha} bravo=${spendInBravo} (each must be ${BUDGET_TOKENS})`,
+  )
+
+  // The generation path charges the tenant that asked for the generation.
+  // Four tokens each is the measured value: two chunks of six characters,
+  // each charged as Math.ceil(6 / 4). The zeros are the isolation proof:
+  // the first tenant's generation charged the second tenant nothing, and the
+  // second tenant's generation left the first tenant's count alone.
+  const generationTokenProblems: string[] = []
+  if (alphaTokensAfterOwn !== GENERATION_TOKENS) {
+    generationTokenProblems.push(`the first tenant holds ${alphaTokensAfterOwn} ${GENERATION_STAGE} tokens, it must hold ${GENERATION_TOKENS}`)
+  }
+  if (bravoTokensBeforeOwn !== 0) {
+    generationTokenProblems.push(`the second tenant held ${bravoTokensBeforeOwn} ${GENERATION_STAGE} tokens before its own generation`)
+  }
+  if (bravoTokensAfterOwn !== GENERATION_TOKENS) {
+    generationTokenProblems.push(`the second tenant holds ${bravoTokensAfterOwn} ${GENERATION_STAGE} tokens, it must hold ${GENERATION_TOKENS}`)
+  }
+  if (alphaTokensAfterSecond !== alphaTokensAfterOwn) {
+    generationTokenProblems.push(`the first tenant's count went from ${alphaTokensAfterOwn} to ${alphaTokensAfterSecond} when the second tenant generated`)
+  }
+
+  record(
+    "the generation path charges the caller's tenant",
+    generationTokenProblems.length === 0,
+    generationTokenProblems.length === 0
+      ? `each tenant charged ${GENERATION_TOKENS} tokens to ${GENERATION_STAGE}, the other tenant charged none`
+      : generationTokenProblems.join(' | '),
+  )
+
+  // The hook writes one worklog line for the duplicate chunk. That line is
+  // the only trace of the tenant the hook charged, so it has to sit in the
+  // caller's tenant: one line there, none in the default tenant. The count
+  // is the one this run added, because the worklog belongs to the tenant and
+  // a second sweep in the same host finds the first sweep's line.
+  const alphaGenerationLines = (alphaLinesAfterOwn - alphaLinesBeforeOwn) + (alphaLinesAfterSecond - alphaLinesBeforeSecond)
+  const bravoGenerationLines = (bravoLinesAfterOwn - bravoLinesBeforeOwn) + (bravoLinesAfterSecond - bravoLinesBeforeSecond)
+  const defaultGenerationLines = (defaultLinesAfterOwn - defaultLinesBeforeOwn) + (defaultLinesAfterSecond - defaultLinesBeforeSecond)
+  const generationWriteProblems: string[] = []
+  if (alphaGenerationLines !== 1) {
+    generationWriteProblems.push(`the first tenant gained ${alphaGenerationLines} ${GENERATION_STAGE} worklog lines, it must gain exactly one`)
+  }
+  if (bravoGenerationLines !== 1) {
+    generationWriteProblems.push(`the second tenant gained ${bravoGenerationLines} ${GENERATION_STAGE} worklog lines, it must gain exactly one`)
+  }
+  if (defaultGenerationLines !== 0) {
+    generationWriteProblems.push(`the default tenant gained ${defaultGenerationLines} ${GENERATION_STAGE} worklog lines, it must gain none`)
+  }
+  // Two tenants holding one worklog OBJECT is one tenant wearing two names:
+  // the line each of them counted would be the same line.
+  if (svc.worklogOf(firstScopeKey) === svc.worklogOf(secondScopeKey)) {
+    generationWriteProblems.push('both tenants share one worklog object')
+  }
+
+  record(
+    "the generation path writes into the caller's tenant",
+    generationWriteProblems.length === 0,
+    generationWriteProblems.length === 0
+      ? 'each tenant gained exactly one generation worklog line, the default tenant gained none'
+      : generationWriteProblems.join(' | '),
+  )
+
+  // The default tenant is a real bucket, so a generation that leaked into it
+  // is a tenant that owns state nobody asked for.
+  //
+  // Two witnesses are needed, because they fail in different ways. The
+  // worklog line catches a leak that left a trail. The EPISODES catch a leak
+  // that only charged tokens: a leaked generation is keyed by the session it
+  // leaked for, so the default session's own episode stays empty and the
+  // default tenant's rings look untouched.
+  //
+  // The comparison is a delta, so a default tenant that already held
+  // something from an unrelated session does not make this check fail. That
+  // case belongs to the check that asks whether the default tenant is empty
+  // at all, and this one asks only about the generation path.
+  const defaultGenerationProblems: string[] = []
+  if (defaultGenerationLines !== 0) {
+    defaultGenerationProblems.push(`the default tenant gained ${defaultGenerationLines} ${GENERATION_STAGE} worklog lines`)
+  }
+  const defaultHolders = episodeKeysOfTenant(ctx, DEFAULT_TENANT).filter(
+    (key) => svc.episode(key).stageTokens.get(GENERATION_STAGE) !== undefined,
+  )
+  if (defaultHolders.length > 0) {
+    defaultGenerationProblems.push(`the default tenant holds ${GENERATION_STAGE} tokens in ${defaultHolders.join(' | ')}`)
+  }
+
+  record(
+    'the generation path leaves the default tenant untouched',
+    defaultGenerationProblems.length === 0,
+    defaultGenerationProblems.length === 0
+      ? 'the default tenant owns no generation state'
+      : defaultGenerationProblems.join(' | '),
   )
 
   return {

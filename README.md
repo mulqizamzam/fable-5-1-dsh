@@ -26,7 +26,7 @@ Status di host ini, diverifikasi 2026-10-20:
 | Hook | 5 (`agent/pre-step`, `tools/execute`, `tools/result`, `llm/stream`, `session/event`) |
 | Service | `ctx.fable51` |
 | CLI | `fable51 inspect`, `fable51 advise-budget`, `fable51 sweep` |
-| Test | 322 di 102 suite, semuanya lulus |
+| Test | 329 di 103 suite, semuanya lulus |
 | Lisensi | MIT |
 
 Cakupan 100 spec di `sumber100specs.md`:
@@ -171,6 +171,13 @@ dipakai bersama. `fable51 sweep` membuktikannya dengan menjalankan seluruh
 tool di dua penyewa pada satu host, jadi pemisahan itu terukur, bukan
 diasumsikan.
 
+Sweep itu juga menjalankan jalur generasi, bukan cuma jalur tool. Alasannya
+penting: pemanggilan tool membawa objek sesi utuh, jadi direktori di dalamnya
+cukup untuk menamai penyewa. Panggilan generasi **hanya** membawa session id,
+tanpa direktori sama sekali, jadi penyewanya harus dicari dari store sesi host,
+lalu registry, lalu `default`. Sweep menjalankan keduanya supaya jalur yang
+paling rawan ikut terukur.
+
 ## Yang menahan vs yang cuma lapor
 
 Kebanyakan spec mengklasifikasi dan melaporkan, tidak memblokir. Tahu mana yang
@@ -231,7 +238,7 @@ pnpm typecheck   # tsc -b, lalu project test
 pnpm build       # emit lib/, termasuk lib/cli.js
 ```
 
-**322 test di 102 suite lulus**, dan `pnpm typecheck` exit 0. Cakupannya:
+**329 test di 103 suite lulus**, dan `pnpm typecheck` exit 0. Cakupannya:
 visualizer, budget advisor, CLI, episode per-session, isolasi penyewa, spec 4
 dan 55, validasi `--format` di CLI, advisor dengan ledger terisi, sweep seluruh
 tool, sweep dua arah, sweep dua penyewa, dan kontrak peer dependensi.

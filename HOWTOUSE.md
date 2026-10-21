@@ -97,7 +97,7 @@ fable51 advise-budget multihop    # stageTokenBudget, maxForkDepth, effortTier y
 fable51 advise-budget search --format json
 fable51 advise-budget open --history-window 200 --min-samples 5
 
-fable51 sweep                     # 92 tool di dua penyewa satu host, lalu 14 cek batas penyewa
+fable51 sweep                     # 92 tool di dua penyewa satu host, lalu 17 cek batas penyewa
 fable51 sweep --format json
 ```
 
@@ -316,7 +316,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan seluruh suite (sekarang 322 test di 102 suite) dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 329 test di 103 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -349,7 +349,7 @@ dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
 
 **Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
-`pnpm test` menjalankan 322 test di 102 suite, semuanya lulus; `pnpm typecheck`
+`pnpm test` menjalankan 329 test di 103 suite, semuanya lulus; `pnpm typecheck`
 exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
@@ -478,8 +478,8 @@ argumen sama, dan `fable51 inspect` melaporkan dua entri worklog dengan nilai
 
 **Diverifikasi bahwa dua penyewa benar-benar terpisah (2026-10-21):**
 `fable51 sweep` menjalankan seluruh 92 tool di dua direktori berbeda pada satu
-host, lalu 14 cek mengukur apakah state satu penyewa mengubah apa yang dilihat
-penyewa lain. Hasil: 13 dari 13 lulus, `VERDICT: PASS`, exit code 0. Yang
+host, lalu 17 cek mengukur apakah state satu penyewa mengubah apa yang dilihat
+penyewa lain. Hasil: 17 dari 17 lulus, `VERDICT: PASS`, exit code 0. Yang
 diukur adalah counter, bukan kesamaan output, karena tool yang menyentuh state
 memang boleh menjawab berbeda. Yang diukur antara lain: pemanggilan di penyewa
 pertama tidak menyentuh penyewa kedua maupun bucket `default`; pemanggilan di
@@ -490,6 +490,47 @@ melayani panggilan pertama penyewa kedua (jadi `rerun` tetap `false`); lineage
 menerima pass id yang sama di kedua penyewa (lineage itu append-only per
 penyewa, jadi penyawaan bersama akan menolak yang kedua); dan anggaran per
 stage yang dibebankan di satu penyewa tidak ditambah di penyewa lain.
+
+**Jalur generasi ikut disapu, karena itu jalur paling rawan (2026-10-21):**
+pemanggilan tool membawa objek sesi utuh, jadi direktori di dalam objek itu
+cukup untuk menamai penyewa. Panggilan generasi hanya membawa session id,
+tanpa direktori sama sekali, jadi penyewanya harus dicari dari store sesi host,
+lalu registry internal, lalu `default`. Sweep sekarang menjalankan keduanya.
+Tiga cek baru mengukurnya: token generasi mendarat di episode penyewa yang
+memanggilnya, baris worklog `llm:<model>` mendarat di worklog penyewa itu
+juga, dan bucket `default` tetap kosong.
+
+Yang diukur untuk baris worklog adalah **selisih**, bukan jumlah absolut.
+Worklog milik penyewa, sedangkan id sesi sweep berubah tiap jalannya, jadi
+sweep kedua di host yang sama akan menemukan baris sweep pertama. Jumlah
+absolut akan salah pada sweep kedua, jadi yang dipakai selisih: berapa baris
+yang ditambahkan jalannya ini.
+
+Untuk membuktikannya, jalur generasi di sabotase: store sesi host dibutakan dan
+registry internal dilupakan. Jalur tool tetap benar (ia baca direktori dari
+objek sesi), jalur generasi jatuh ke `default`, dan sweep melaporkan enam
+kegagalan: tiga cek generasi baru plus tiga cek `default` yang lama, karena
+kebocoran itu persis yang ketiga cek itu deteksi. Sebelas cek lama tetap
+lulus, jadi yang gagal memang jalur generasinya, bukan host-nya.
+
+**Tujuh temuan verifier dingin pada ronde kedua, semuanya ditutup
+(2026-10-21):** verifier dengan konteks segar menjalankan 24 sabotase pada
+tiga cek generasi itu. Yang lolos: kebocoran yang membebani token ke penyewa
+`default` **tanpa** menulis baris worklog. Cek `default` yang lama hanya
+melihat episode `default::default`, sedangkan generasi yang bocor tercatat di
+episode `default::<id sesi>`, jadi episode itu tidak terlihat. Sekarang cek
+generasi juga menelusuri **setiap** episode milik penyewa `default`. Selain
+itu: cek ketiga ternyata tidak menambah daya deteksi apa pun, karena dua
+klausulnya identik dengan cek yang sudah ada; sekarang klausulnya diganti
+menjadi selisih, jadi tidak lagi mengulang cek lain dan tidak lagi gagal pada
+penyewa `default` yang sudah punya state dari sesi lain. Sweep juga melempar
+exception, bukan melaporkan, kalau dua penyewa memakai session id yang sama;
+sekarang keduanya melaporkan. Dua angka di dokumen usang dikoreksi. Dan klaim
+"14 cek lama tidak berubah" kurang akurat untuk tiga cek `default`: nama
+mereka menyebut "call", sedangkan jendela pengukurannya sekarang ikut
+mencakup generasi, jadi kebocoran generasi ikut dilaporkan di sana juga. Nama
+cek tidak diubah, karena laporan yang dihasilkan sudah jujur, dan melonggarkan
+cek `default` justru menghapus daya deteksinya.
 
 **Sweep itu bisa gagal, dan itu dibuktikan (2026-10-21):** sweep yang selalu
 lulus bukan bukti apa pun, jadi `test/unit/sweep-sensitivity.spec.ts` merusak
