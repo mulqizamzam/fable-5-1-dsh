@@ -160,6 +160,9 @@ export function budgetAdvisorTools(): ToolSpec[] {
   return [
     {
       spec: '11',
+      // Reads the live cost ledger, so a cached answer would recommend a
+      // budget computed from bookings that have since changed.
+      effectful: true,
       name: 'budget-advisor',
       description: 'Recommend stageTokenBudget, maxForkDepth, effortTier for a task class based on historical cost ledger (spec 11, 60).',
       parameters: {

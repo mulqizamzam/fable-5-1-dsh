@@ -148,7 +148,7 @@ mana sebelum memakainya sebagai kontrol.
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat dengan verdict `discarded`. Kalau `escapeAction: 'abort'`, tool melempar dan envelope jadi `ok:false`, bukan hasil yang kelihatan pakai. Allow-list kosong mengizinkan read dan menolak write. Allow-list yang dideklarasikan dicocokkan persis. |
 | `human-in-the-loop` (27) | Fail-closed: `irreversible`, `external`, atau `estimatedCost` yang tidak dikirim tetap minta persetujuan. Hanya jalan kalau model memanggil tool. |
-| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
+| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. Tool yang cuma menghitung ditandai `isConcurrencySafe`, jadi host dispatch-nya paralel; tool yang menyentuh state tidak. |
 | Isolasi fault hook | Fault di `agent/pre-step` atau `llm/stream` dicatat, lalu step atau stream lanjut. Plugin tidak bisa membatalkan turn. |
 
 | Cuma lapor | Konsekuensi |
@@ -202,7 +202,7 @@ pnpm build       # emit lib/, termasuk lib/cli.js
 Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
 0. Dengan visualizer, budget advisor, CLI, episode per-session, spec 4 dan 55,
 validasi `--format` di CLI, advisor dengan ledger terisi, dan kontrak peer
-dependensi: **283 test di 96 suite lulus**.
+dependensi: **287 test di 97 suite lulus**.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
@@ -229,10 +229,11 @@ service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
   host bisa jadi beberapa kali lipat cap itu. Host punya cap sendiri
   (`maxParallelToolCalls`, default 10); yang lebih kecil dari dua cap itu
   yang mengikat.
-- **Tool yang tidak mendeklarasikan `isConcurrencySafe` berjalan eksklusif.**
-  Host dispatch paralel hanya untuk tool yang menandainya, misalnya `read`.
-  Tool `fable51_*` sendiri tidak menandainya, jadi beberapa tool yang dipanggil
-  sekaligus berjalan berurutan dan tidak pernah menyentuh cap.
+- **Tool yang menyentuh state berjalan eksklusif, sisanya paralel.** Host
+  dispatch paralel hanya untuk tool yang menandainya. Bundle ini menurunkan
+  penanda itu dari `effectful`: 64 tool yang cuma menghitung boleh jalan
+  bareng, 28 tool yang menyentuh state (budget, registry, lineage, snapshot,
+  atau membaca live state) jalan satu per satu.
 - **Tidak ada CI dan tidak ada lockfile.** `lib/` ada di `.gitignore`, jadi
   artifact yang dijalankan host adalah apa pun yang ter-build lokal. Berlaku
   juga untuk CLI: `bin/fable51.js` adalah shim ke `lib/cli.js`, jadi butuh

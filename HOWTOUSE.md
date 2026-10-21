@@ -168,7 +168,7 @@ Paling sering disalahpahami. Baca sebelum menjadikannya kontrol.
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat ke worklog dengan `verdict:'discarded'`. Kalau `escapeAction:'abort'` tool melempar, jadi `ok:false`, bukan hasil yang kelihatan pakai. Allow-list kosong berarti read boleh, write ditolak. Allow-list yang dideklarasikan dicocokkan persis. |
 | `human-in-the-loop` (27) | Fail-closed: `irreversible`/`external`/`estimatedCost` yang kosong tetap minta persetujuan. Tetap hanya jalan kalau model memanggil tool. |
-| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
+| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, sisanya **antre**: call menunggu slot, bukan ditolak. Call nested tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. Tool yang cuma menghitung ditandai `isConcurrencySafe`, jadi host dispatch-nya paralel; tool yang menyentuh state tidak. |
 | Isolasi fault hook | Error di `agent/pre-step` atau `llm/stream` dicatat lalu step/stream lanjut. Plugin tidak bisa membatalkan turn. |
 
 ### Hanya mengklasifikasi & melapor
@@ -254,15 +254,17 @@ memakai artifact lama sampai restart.
    session untuk event lifecycle. Call yang tidak diatribusikan host masuk ke
    bucket `default` tersendiri, yang tidak di-reset turn session mana pun.
 
-2. **Host dispatch paralel hanya untuk tool yang mendeklarasikan
-   `isConcurrencySafe`.** Tool `read` milik host punya, tool `fable51_*` milik
-   bundle ini tidak. Jadi beberapa tool `fable51_*` yang dipanggil sekaligus
-   berjalan berurutan, sementara tool host yang ditandai berjalan paralel dan
-   **tetap terikat cap**: satu sesi headless dengan lima `read` paralel
-   melaporkan `peak` 4 pada cap 4. Cap-nya per session, jadi dua session di
-   host yang sama masing-masing mendapat jatah penuh; host punya cap sendiri
-   (`maxParallelToolCalls`, default 10) dan yang lebih kecil dari dua cap itu
-   yang mengikat.
+2. **Tool yang menyentuh state jalan eksklusif, sisanya paralel.** Host
+   dispatch paralel hanya untuk tool yang menandainya `isConcurrencySafe`.
+   Bundle ini menurunkan penanda itu dari `effectful`: 64 tool yang cuma
+   menghitung boleh jalan bareng, 28 tool yang menyentuh state (budget,
+   registry, lineage, snapshot, atau membaca live state) jalan satu per satu.
+   **Cap tetap mengikat jalur itu**: satu sesi headless dengan dua tool
+   `fable51_*` murni dipanggil sekaligus melaporkan `peak` 2, dan sesi dengan
+   lima tool seperti itu melaporkan `peak` 4 pada cap 4. Cap-nya per session,
+   jadi dua session di host yang sama masing-masing mendapat jatah penuh;
+   host punya cap sendiri (`maxParallelToolCalls`, default 10) dan yang lebih
+   kecil dari dua cap itu yang mengikat.
 
    Jalur agent-loop penuh sudah dieksekusi end-to-end pada 2026-10-20 lewat
    `dsh --profile fable-test headless`.
@@ -295,7 +297,7 @@ fungsi `sandbox-boundaries` dipanggil live (read/write); `context-management`,
 untuk sintaks boot.
 
 **Diverifikasi saat menambah visualizer + budget advisor:** `pnpm test`
-menjalankan seluruh suite (sekarang 283 test di 96 suite) dan semuanya lulus (unit + integration + e2e);
+menjalankan seluruh suite (sekarang 287 test di 97 suite) dan semuanya lulus (unit + integration + e2e);
 `pnpm typecheck` exit 0; `pnpm build` memancarkan `lib/` termasuk `lib/cli.js`;
 `node bin/fable51.js inspect` dan `node bin/fable51.js advise-budget <taskClass>`
 dijalankan live keluar ASCII dan JSON.
@@ -328,7 +330,7 @@ dalam satu pesan assistant. Log sesi menunjukkan keduanya didispatch berurutan,
 jadi cap bandwidth tidak aktif pada jalur model.
 
 **Diverifikasi saat menambah validasi `--format` di CLI (2026-10-20):**
-`pnpm test` menjalankan 283 test di 96 suite, semuanya lulus; `pnpm typecheck`
+`pnpm test` menjalankan 287 test di 97 suite, semuanya lulus; `pnpm typecheck`
 exit 0; `pnpm build` exit 0; `node bin/fable51.js inspect --format asdf` keluar
 1 dengan pesan `--format must be json or ascii`; `--format=json` diterima;
 `--format` tanpa nilai keluar 1 dengan pesan `--format requires a value: json
@@ -372,6 +374,13 @@ cap itu mengikat jalur tersebut: yang kelima menunggu slot, bukan ditolak. Log
 sesi menunjukkan kelima `read` itu keluar dalam satu pesan, dan
 `step` yang sama.
 
+**Diverifikasi bahwa tool bundle sendiri boleh jalan paralel (2026-10-21):**
+satu sesi headless memanggil dua tool `fable51_*` yang murni dalam satu pesan
+assistant, dan `fable51 inspect` melaporkan `peak` 2, jadi keduanya jalan
+bersamaan. Sesi dengan lima tool seperti itu melaporkan `peak` 4 pada cap 4:
+lima diminta, empat jalan, yang kelima menunggu slot. Bandwidth cap mengikat
+jalur model, bukan cuma jalur tool host.
+
 **Defect yang ditemukan dan diperbaiki saat itu (2026-10-21):** versi pertama
 mengambil slot di waterfall `tools/pre-execute` dan melepaskannya saat
 `tools/result`. Itu membuat host **macet**: host menunggu prepare setiap call
@@ -383,6 +392,14 @@ Slot sekarang diambil dan dilepas di dalam waterfall `tools/execute`, yang
 membingkai body tool, jadi pelepasannya dijamin terjadi saat dispatch.
 `test/unit/progress-bandwidth.spec.ts` mengunci itu: dengan desain lama, test
 tersebut menggantung dan dibunuh runner.
+
+**Defect yang ditemukan saat menandai tool (2026-10-21):** `fable51_inspect`
+dan `fable51_budget-advisor` membaca live state (ledger, worklog, cache) tapi
+tidak ditandai effectful, jadi hasilnya dilayani dari cache idempotency.
+Pemeriksaan kedua menunjukkan `totalTokens` 0 padahal 999.999 token baru ditambahkan
+ke ledger di antaranya: operatornya akan melihat gambar lama. Keduanya kini
+effectful, jadi selalu membaca state terkini. Audit menyeluruh atas 92 tool
+menemukan tidak ada pembaca live state lain yang lolos.
 
 **Belum diverifikasi:** tool selain yang disebut di atas tidak dipanggil
 langsung.

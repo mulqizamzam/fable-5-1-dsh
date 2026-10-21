@@ -101,6 +101,13 @@ export function defineTool<T>(spec: ToolSpec<T>, env: ToolEnv): ToolDefinition {
         return [{ type: 'text', text: renderText(value) }]
       },
     },
+    // The host dispatches a group of tool calls in parallel only when the
+    // tool says it is safe to do so. A tool that touches live state is not:
+    // its answer depends on the moment it runs, and its mutation must not
+    // interleave with another. `effectful` already means exactly that, so
+    // the flag is derived rather than declared per tool, and a tool that
+    // starts touching state becomes exclusive without anyone remembering.
+    isConcurrencySafe: (): boolean => spec.effectful !== true,
     async execute(args: unknown, exec: ToolRunContext): Promise<unknown> {
       let output: unknown
       let rerun = false

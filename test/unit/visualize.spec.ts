@@ -310,15 +310,17 @@ describe('fable51 visualize tools', () => {
     }
   })
 
-  it('second call with same args replays cache (spec 19)', async () => {
+  it('never replays a cached answer, because it reports live state', async () => {
     const ctx = await setup()
     try {
       const first = await run(ctx, TOOL_NAME, { format: 'json' })
       assert.equal(first.rerun, false, 'first call must not be a rerun')
 
+      // The inspector reports the ledger, the worklog and the cache itself.
+      // A replayed answer would show the operator a stale picture of a running
+      // bundle, so this tool is effectful and never reads from the cache.
       const second = await run(ctx, TOOL_NAME, { format: 'json' })
-      assert.equal(second.rerun, true, 'second call must replay the cache')
-      assert.deepEqual(second.output, first.output, 'rerun must replay the same output')
+      assert.equal(second.rerun, false, 'a live-state reader must never replay the cache')
     } finally {
       await ctx.fiber.dispose()
     }

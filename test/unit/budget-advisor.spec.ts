@@ -264,15 +264,17 @@ describe('fable51 budget-advisor tools', () => {
     }
   })
 
-  it('second call with same args replays cache (spec 19)', async () => {
+  it('never replays a cached answer, because it reads the live ledger', async () => {
     const ctx = await setup()
     try {
       const first = await run(ctx, TOOL_NAME, { taskClass: 'search' })
       assert.equal(first.rerun, false, 'first call must not be a rerun')
 
+      // The advisor reads the cost ledger. A replayed recommendation would be
+      // computed from bookings that have since changed, so this tool is
+      // effectful and never reads from the cache.
       const second = await run(ctx, TOOL_NAME, { taskClass: 'search' })
-      assert.equal(second.rerun, true, 'second call must replay the cache')
-      assert.deepEqual(second.output, first.output, 'rerun must replay the same output')
+      assert.equal(second.rerun, false, 'a live-state reader must never replay the cache')
     } finally {
       await ctx.fiber.dispose()
     }

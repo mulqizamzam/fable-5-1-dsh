@@ -60,6 +60,9 @@ export function visualizeTools(): ToolSpec[] {
   return [
     {
       spec: '100',
+      // Reads live state (ledger, worklog, cache, snapshots, lineage), so a
+      // cached answer would show the operator a stale picture.
+      effectful: true,
       name: 'inspect',
       description: 'Render the complete fable51 service state: policies, lineage, costs, cache, snapshots, and config summary.',
       parameters: {

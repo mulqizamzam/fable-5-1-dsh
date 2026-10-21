@@ -325,7 +325,7 @@ Hanya empat hal di bundle ini yang bisa menghentikan sesuatu.
 |---|---|
 | `sandbox-boundaries` (26) | Escape dicatat dengan verdict `discarded`. Bila `escapeAction: 'abort'`, tool melempar sehingga envelope menjadi `ok:false`, bukan hasil yang terlihat sah. Allow-list kosong berarti read diizinkan dan write ditolak. Allow-list yang dideklarasikan dicocokkan persis. |
 | `human-in-the-loop` (27) | Fail-closed. `irreversible`, `external`, atau `estimatedCost` yang tidak dikirim tetap meminta approval. Tetap hanya berjalan bila model memanggil tool. |
-| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, excess **antre**: call menunggu slot, bukan ditolak. Call nested (punya `parent`) tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. |
+| Bandwidth (55) | Waterfall `tools/execute` memegang satu slot pass paralel per session, di sekitar body tool. Di atas `maxConcurrentPasses`, excess **antre**: call menunggu slot, bukan ditolak. Call nested (punya `parent`) tidak ambil slot, jadi rantai dependensi tidak bisa deadlock di cap. Tool yang cuma menghitung ditandai `isConcurrencySafe`, jadi host dispatch-nya paralel; tool yang menyentuh state tidak. |
 | Isolasi fault hook | Error di `agent/pre-step` atau `llm/stream` dicatat, lalu step atau stream lanjut. Plugin tidak bisa membatalkan turn. |
 
 ### 7.2 Yang mengklasifikasi dan melapor
@@ -448,7 +448,7 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | Kriteria | Perintah | Hasil | Status |
 |---|---|---|---|
 | Tool terdaftar lengkap | enumerasi `allToolSpecs()` | 92 tool, 91 spec id | lulus |
-| Suite test | `pnpm test` | 283 test, 96 suite, 283 lulus, 0 gagal | lulus |
+| Suite test | `pnpm test` | 287 test, 97 suite, 287 lulus, 0 gagal | lulus |
 | Typecheck | `pnpm typecheck` | exit 0 | lulus |
 | Config fail-loud | `test/unit/config.spec.ts` | lulus | lulus |
 | Envelope dan verdict | suite unit | lulus | lulus |
@@ -459,7 +459,8 @@ budget advisor, CLI, episode per-session, serta spec 4 dan 55.
 | CLI | `node bin/fable51.js inspect` dan `advise-budget` | ASCII dan JSON | lulus |
 | Host pasca-restart | `ps` untuk waktu start host, impor `lib/tools/index.js` | 92 tool, host start 53 menit setelah build | lulus |
 | Advisor dengan ledger terisi | `test/unit/budget-advisor.spec.ts` + sesi headless | 200.000 token x 5.0 = 1.000.000, sampleSize 4 di host | lulus |
-| Antrean bandwidth mengikat di host nyata | sesi headless: 5 `read` paralel | peak 4 pada cap 4, yang kelima diantre | lulus |
+| Antrean bandwidth mengikat di host nyata | sesi headless: 2 lalu 5 tool `fable51_*` murni paralel | peak 2 lalu peak 4 pada cap 4 | lulus |
+| Tool murni boleh paralel | `test/unit/concurrency.spec.ts` | 64 tool paralel, 28 eksklusif | lulus |
 | Grup paralel tidak membuat host macet | `test/unit/progress-bandwidth.spec.ts` | desain lama hang >220 detik, desain baru 38 detik | lulus |
 
 Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
@@ -482,13 +483,14 @@ Suite test terdiri dari 20 berkas unit, 1 integration, dan 1 e2e.
    menjalankan `maxConcurrentPasses` pass paralel, tapi dua session di host
    yang sama masing-masing mendapat jatah penuh. Host punya cap sendiri
    (`maxParallelToolCalls`, default 10); yang lebih kecil dari dua cap itu
-   yang mengikat. Terverifikasi di host nyata: satu sesi headless dengan
-   lima panggilan `read` paralel (tool `read` mendeklarasikan
-   `isConcurrencySafe`, jadi host dispatch-nya paralel) melaporkan `peak` 4
-   dengan cap 4, jadi cap ini benar-benar mengikat jalur itu. Tool
-   `fable51_*` sendiri tidak mendeklarasikan `isConcurrencySafe`, jadi
-   beberapa tool yang dipanggil sekaligus berjalan berurutan. Jalur agent-loop penuh sendiri sudah dijalankan end-to-end
-   pada 2026-10-20 lewat `dsh --profile fable-test headless`: envelope asli
+   yang mengikat. Bundle ini menurunkan penanda `isConcurrencySafe` dari
+   `effectful`: 64 tool yang cuma menghitung boleh jalan bareng, 28 tool
+   yang menyentuh state jalan satu per satu. Terverifikasi di host nyata:
+   satu sesi headless dengan dua tool `fable51_*` murni dipanggil sekaligus
+   melaporkan `peak` 2, dan sesi dengan lima tool seperti itu melaporkan
+   `peak` 4 pada cap 4, jadi cap ini mengikat jalur model, bukan cuma jalur
+   tool host. Jalur agent-loop penuh sendiri sudah dijalankan end-to-end pada
+   2026-10-20 lewat `dsh --profile fable-test headless`: envelope asli
    `fable51_chain-vs-tree` diterima, dan spec 4 serta 55 terverifikasi lewat
    jalur yang sama.
 4. **Tidak ada CI dan tidak ada lockfile.** Artefak yang dijalankan host adalah
