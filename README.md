@@ -222,10 +222,10 @@ pnpm typecheck   # tsc -b, lalu project test
 pnpm build       # emit lib/, termasuk lib/cli.js
 ```
 
-Pada commit `3b701d6`: 227 test di 89 suite lulus, dan `pnpm typecheck` exit
-0. Dengan visualizer, budget advisor, CLI, episode per-session, spec 4 dan 55,
-validasi `--format` di CLI, advisor dengan ledger terisi, dan kontrak peer
-dependensi: **302 test di 99 suite lulus**.
+**302 test di 99 suite lulus**, dan `pnpm typecheck` exit 0. Cakupannya:
+visualizer, budget advisor, CLI, episode per-session, isolasi penyewa, spec 4
+dan 55, validasi `--format` di CLI, advisor dengan ledger terisi, sweep seluruh
+tool, dan kontrak peer dependensi.
 
 Suite integration dan e2e memuat bundle ke host Cordis sungguhan dengan
 service dsh sungguhan (`dsh-tools`, `dsh-llm`, `dsh-session`,
